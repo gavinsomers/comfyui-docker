@@ -1,0 +1,141 @@
+# ComfyUI Docker Project - Git Ignore Rules
+
+# ============================================================================
+# Large Data Directories (CRITICAL - 900GB+ of data)
+# ============================================================================
+
+# Shared data directory containing models, outputs, inputs
+basedir/
+
+# Workflow runtime directories (ComfyUI source, venvs, caches)
+wf_*/run/
+wf_*/HF/
+wf_*/data/
+
+# ============================================================================
+# ML Models and Weights (HUGE - 904GB)
+# ============================================================================
+
+# Model directories
+models/
+*.safetensors
+*.ckpt
+*.pth
+*.pt
+*.bin
+*.onnx
+*.pb
+
+# ============================================================================
+# Generated Outputs and Inputs
+# ============================================================================
+
+# Output directories
+output/
+outputs/
+**/output/
+**/outputs/
+
+# Input directories
+input/
+inputs/
+**/input/
+
+# Temporary files
+temp/
+tmp/
+**/temp/
+
+# ============================================================================
+# Python Environment
+# ============================================================================
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+**/venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*~
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.Python
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# ============================================================================
+# Caches and User Data
+# ============================================================================
+
+# HuggingFace cache
+HF/
+.cache/
+**/.cache/
+
+# User data and configurations
+user/
+**/user/
+
+# ============================================================================
+# Logs and Temporary Files
+# ============================================================================
+
+*.log
+*.log.*
+*.log.temp
+*.cmd
+.comfyui_version
+
+# ============================================================================
+# OS and Editor Files
+# ============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+.directory
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editor directories
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+
+# ============================================================================
+# Claude Code
+# ============================================================================
+
+# Claude Code local settings (optional - uncomment if you don't want to share)
+# .claude/settings.local.json
+
+# ============================================================================
+# Docker (keep configs, ignore runtime data)
+# ============================================================================
+
+# Docker volumes and runtime data
+**/volumes/
+
+# ============================================================================
+# Git
+# ============================================================================
+
+*.orig
