@@ -4,8 +4,24 @@
 # Large Data Directories (CRITICAL - 900GB+ of data)
 # ============================================================================
 
-# Shared data directory containing models, outputs, inputs
-basedir/
+# Shared data directory containing models, outputs, inputs.
+# Keep selected reusable workflow JSONs tracked below.
+basedir/*
+!basedir/user/
+basedir/user/*
+!basedir/user/default/
+basedir/user/default/*
+!basedir/user/default/workflows/
+basedir/user/default/workflows/*
+!basedir/user/default/workflows/audio/
+basedir/user/default/workflows/audio/*
+!basedir/user/default/workflows/audio/qwen3_tts_voice_clone.json
+!basedir/user/default/workflows/audio/qwen3_tts_record_voice_clone.json
+
+# Runtime ComfyUI source, venv, caches, and installed custom nodes.
+spider/run/
+spider/custom_nodes/
+spider/.claude/
 
 # Workflow runtime directories (ComfyUI source, venvs, caches)
 wf_*/run/
@@ -139,3 +155,11 @@ Desktop.ini
 # ============================================================================
 
 *.orig
+
+# Tracked reusable ComfyUI workflows from the otherwise ignored basedir tree.
+!basedir/user/
+!basedir/user/default/
+!basedir/user/default/workflows/
+!basedir/user/default/workflows/audio/
+!basedir/user/default/workflows/audio/qwen3_tts_voice_clone.json
+!basedir/user/default/workflows/audio/qwen3_tts_record_voice_clone.json
