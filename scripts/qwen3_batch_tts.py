@@ -14,6 +14,7 @@ from pathlib import Path
 
 DEFAULT_BASEDIR = Path("/home/gavman/code/forks/comfy/basedir")
 DEFAULT_SERVER = "http://127.0.0.1:8188"
+DEFAULT_PAUSE_SAMPLE_RATE = 24000
 
 
 def slugify(value):
@@ -220,7 +221,7 @@ def completed_indexes(manifest):
     return done
 
 
-def concatenate_outputs(project_dir, manifest):
+def concatenate_outputs(project_dir, manifest, pause_ms=500):
     outputs = [
         Path(chunk["output_path"])
         for chunk in sorted(manifest["chunks"], key=lambda c: c["index"])
@@ -228,14 +229,41 @@ def concatenate_outputs(project_dir, manifest):
     ]
     if not outputs:
         return None
-    list_file = project_dir / "concat.txt"
-    list_file.write_text(
-        "".join(f"file '{path.as_posix()}'\n" for path in outputs),
-        encoding="utf-8",
-    )
     target = project_dir / "combined.flac"
+
+    if len(outputs) == 1 or pause_ms <= 0:
+        list_file = project_dir / "concat.txt"
+        list_file.write_text(
+            "".join(f"file '{path.as_posix()}'\n" for path in outputs),
+            encoding="utf-8",
+        )
+        subprocess.run(
+            ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(list_file), "-c", "copy", str(target)],
+            check=True,
+        )
+        return target
+
+    pause_seconds = pause_ms / 1000
+    filter_parts = []
+    concat_inputs = []
+    for index, _ in enumerate(outputs):
+        concat_inputs.append(f"[{index}:a]")
+        if index < len(outputs) - 1:
+            silence_label = f"s{index}"
+            filter_parts.append(
+                f"anullsrc=r={DEFAULT_PAUSE_SAMPLE_RATE}:cl=mono:d={pause_seconds:.3f}[{silence_label}]"
+            )
+            concat_inputs.append(f"[{silence_label}]")
+    filter_parts.append(
+        f"{''.join(concat_inputs)}concat=n={len(concat_inputs)}:v=0:a=1[outa]"
+    )
+
+    command = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
+    for output in outputs:
+        command.extend(["-i", str(output)])
+    command.extend(["-filter_complex", ";".join(filter_parts), "-map", "[outa]", str(target)])
     subprocess.run(
-        ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(list_file), "-c", "copy", str(target)],
+        command,
         check=True,
     )
     return target
@@ -256,6 +284,7 @@ def main():
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--concat", action="store_true")
+    parser.add_argument("--pause-ms", type=int, default=500, help="Silence to insert between chunks when --concat is used. Use 0 for a direct concat.")
     parser.add_argument("--repo-id", default="Qwen/Qwen3-TTS-12Hz-0.6B-Base")
     parser.add_argument("--source", default="HuggingFace")
     parser.add_argument("--precision", default="bf16")
@@ -360,9 +389,10 @@ def main():
         save_manifest(manifest_path, manifest)
 
     if args.concat:
-        target = concatenate_outputs(project_dir, manifest)
+        target = concatenate_outputs(project_dir, manifest, pause_ms=args.pause_ms)
         if target:
             manifest["combined_output"] = str(target)
+            manifest["combined_pause_ms"] = args.pause_ms
             save_manifest(manifest_path, manifest)
             print(f"Combined output: {target}")
 

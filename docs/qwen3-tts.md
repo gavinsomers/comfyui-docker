@@ -98,7 +98,7 @@ flowchart LR
     D["4. Dry run\nCheck chunking before spending GPU time\n--dry-run"]
     E["5. Run batch\nQueue each chunk through Comfy HTTP API\nSave audio plus manifest"]
     F["6. Review or resume\nUse manifest.json\n--start-at, --limit, --overwrite"]
-    G["7. Optional combine\n--concat writes combined.flac"]
+    G["7. Optional combine\n--concat writes combined.flac\nDefault pause: 500 ms"]
 
     A --> B --> C --> D --> E --> F --> G
 ```
@@ -129,3 +129,5 @@ Useful batch options:
 - `--limit` runs only a small number of chunks for a test pass.
 - `--overwrite` reruns chunks that already succeeded.
 - `--concat` writes `combined.flac` after successful chunks finish.
+- `--pause-ms` controls silence inserted between chunks when using `--concat`.
+  The default is `500`; use `--pause-ms 0` for direct concatenation.
