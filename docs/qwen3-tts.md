@@ -90,6 +90,21 @@ exactly.
 
 Long text should be generated with the external API driver:
 
+```mermaid
+flowchart LR
+    A["1. Start Comfy\ncd spider\ndocker compose up -d"]
+    B["2. Record reference\nUse the exact text you will pass as reference text\nKeep it clean and under the ref max seconds"]
+    C["3. Prepare files\nReference audio: basedir/input or absolute path\nLong script: plain UTF-8 text file"]
+    D["4. Dry run\nCheck chunking before spending GPU time\n--dry-run"]
+    E["5. Run batch\nQueue each chunk through Comfy HTTP API\nSave audio plus manifest"]
+    F["6. Review or resume\nUse manifest.json\n--start-at, --limit, --overwrite"]
+    G["7. Optional combine\n--concat writes combined.flac"]
+
+    A --> B --> C --> D --> E --> F --> G
+```
+
+Rendered runbook: `docs/qwen3-tts-long-script-runbook.png`.
+
 ```bash
 python3 scripts/qwen3_batch_tts.py \
   --reference-audio my_voice_ref.wav \
@@ -105,3 +120,12 @@ basedir/output/audio/qwen3_projects/<project-name>/
 ```
 
 Each project folder includes `manifest.json` for restartability.
+
+Useful batch options:
+
+- `--dry-run` previews the generated chunks without queueing Comfy work.
+- `--max-chars` controls the target chunk size. The default is `650`.
+- `--start-at` resumes from a numbered chunk.
+- `--limit` runs only a small number of chunks for a test pass.
+- `--overwrite` reruns chunks that already succeeded.
+- `--concat` writes `combined.flac` after successful chunks finish.
