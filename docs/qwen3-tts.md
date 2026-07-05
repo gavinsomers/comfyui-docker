@@ -14,6 +14,77 @@ It intentionally does not track large runtime data:
 Those folders contain downloaded models, generated media, local ComfyUI runtime
 state, venvs, and cloned custom nodes. They can be recreated or redownloaded.
 
+## Architecture
+
+```mermaid
+flowchart TB
+    Gavin["Gavin / Browser"]
+    GavLife["GavLife task state\n/home/gavman/Documents/_ops"]
+    Repo["Git repo\n/home/gavman/code/forks/comfy"]
+
+    subgraph Tracked["Tracked reproducibility layer"]
+        Compose["spider/compose.yaml"]
+        Scripts["spider/userscripts_dir/*.sh"]
+        Docs["docs/qwen3-tts.md\nAGENTS.md"]
+        Workflows["Qwen workflow JSONs\nbasedir/user/default/workflows/audio/"]
+        Driver["scripts/qwen3_batch_tts.py"]
+    end
+
+    subgraph Runtime["Ignored runtime layer"]
+        SpiderRun["spider/run/\nComfyUI source + venv"]
+        CustomNodes["spider/custom_nodes/\nmounted as /basedir/custom_nodes"]
+        Basedir["basedir/"]
+        Models["basedir/models/\nQwen weights and other models"]
+        Inputs["basedir/input/\nreference clips and uploads"]
+        Outputs["basedir/output/\ngenerated audio and manifests"]
+    end
+
+    subgraph Container["Docker service: spider"]
+        Comfy["ComfyUI server\nhttp://127.0.0.1:8188"]
+        QwenNode["ComfyUI-Qwen3-TTS custom node"]
+    end
+
+    subgraph WorkflowsRuntime["Generation paths"]
+        FileWorkflow["File reference workflow\nLoadAudio -> Qwen3VoiceClone -> SaveAudio"]
+        RecordWorkflow["Browser recording workflow\nRecordAudio -> Qwen3VoiceClone -> SaveAudio"]
+        BatchFlow["Long-form batch flow\nsplit text -> queue chunks -> manifest"]
+    end
+
+    Gavin -->|"loads UI workflows / records mic"| Comfy
+    Gavin -->|"script + reference metadata"| Driver
+
+    Repo --> Tracked
+    Compose --> Container
+    Scripts -->|"clone/install on startup"| QwenNode
+    Workflows --> FileWorkflow
+    Workflows --> RecordWorkflow
+    Driver -->|"HTTP /prompt and /history"| Comfy
+
+    Comfy --> QwenNode
+    QwenNode --> Models
+    QwenNode --> Inputs
+    FileWorkflow --> Inputs
+    RecordWorkflow --> Inputs
+    FileWorkflow --> Outputs
+    RecordWorkflow --> Outputs
+    BatchFlow --> Outputs
+    Driver --> BatchFlow
+
+    Container --> SpiderRun
+    Container --> CustomNodes
+    Container --> Basedir
+
+    GavLife -. "cards, decisions, blockers, next actions" .-> Repo
+    GavLife -. "project state for substantive work" .-> Gavin
+```
+
+The main seam is the Comfy HTTP API. Interactive work can happen in the
+browser with tracked workflow JSONs, while long-form generation is driven by
+`scripts/qwen3_batch_tts.py` without embedding looping logic into a visual
+workflow. The repo tracks only the reproducibility layer; model weights,
+reference media, generated outputs, cloned custom nodes, and venv/runtime state
+remain local runtime data.
+
 ## Runtime
 
 The active Docker service lives in `spider/`:
