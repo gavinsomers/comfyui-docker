@@ -81,7 +81,7 @@ LTX 2.5, and LongCat Avatar. The tracked
 [presenter benchmark proof](presenter-benchmark-proof.json) records render time,
 peak observed VRAM, objective lower-face motion diagnostics, and human visual
 review. LTX 2.5 won because it produced clear varied mouth shapes at 1024x576 in
-48 seconds. LongCat also articulated but took 285 seconds at 832x480 and was
+48 seconds. LongCat also articulated but took 264 seconds at 768x432 and was
 more exaggerated; LTX 2.3 remained a failed baseline.
 
 ## Commands
@@ -133,10 +133,11 @@ python3 scripts/video_factory.py qa-presenter "$PROJECT" --shot-id s0003 \
 
 The automatic lower-face motion check catches nearly frozen mouths. It is not a
 phoneme-level synchronisation model, so it can never replace the manual visible
-articulation review. When `presenter.qa.require_pass_before_assembly` is true,
-assembly rejects missing, stale, pending, or failed presenter QA records.
-Contact sheets and `presenter-qa.json` are written under the project runtime
-folder.
+articulation review. For every project containing presenter shots, assembly
+rejects missing, stale, pending, or failed presenter QA records. QA records are
+also invalidated when sampling, motion thresholds, the mouth ROI, or the
+screening algorithm changes. Contact sheets and `presenter-qa.json` are written
+under the project runtime folder.
 
 Assemble once every shot has an asset and every required presenter review passes:
 
@@ -154,7 +155,8 @@ python3 scripts/presenter_benchmark.py \
 
 The bundled LongCat graph is intentionally a one-window experimental adapter
 for approximately four-second proofs. On the RTX 5090, 1024x576 exhausted 32 GB
-VRAM; 832x480 with 35 swapped transformer blocks succeeded. Its optional custom
+VRAM; 768x432 with 35 swapped transformer blocks completed in 264 seconds with
+25,235 MiB peak observed total GPU memory. Its optional custom
 node dependencies are installed reproducibly by
 `spider/userscripts_dir/08-install-presenter-benchmark-deps.sh`.
 

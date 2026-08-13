@@ -11,13 +11,41 @@ import subprocess
 from pathlib import Path
 from typing import Any, Sequence
 
-from video_factory.core import ffprobe_duration, sha256_file
+from video_factory.core import ffprobe_duration, sha256_file, stable_hash
 
 DEFAULT_MOUTH_ROI = {"x": 0.38, "y": 0.38, "width": 0.24, "height": 0.25}
 DEFAULT_SAMPLE_FPS = 12
 DEFAULT_FRAME_WIDTH = 96
 DEFAULT_FRAME_HEIGHT = 64
+PRESENTER_QA_ALGORITHM = "lower-face-luma-motion"
+PRESENTER_QA_ALGORITHM_VERSION = 1
+AUDIO_SAMPLES_PER_WINDOW = 100
 MANUAL_CRITERIA = ("visible_articulation", "identity_stability", "temporal_stability")
+
+
+def build_presenter_qa_policy(
+    *,
+    sample_fps: int = DEFAULT_SAMPLE_FPS,
+    minimum_mean: float = 5.0,
+    minimum_p95: float = 9.0,
+    roi: dict[str, float] | None = None,
+) -> dict[str, Any]:
+    return {
+        "algorithm": PRESENTER_QA_ALGORITHM,
+        "algorithm_version": PRESENTER_QA_ALGORITHM_VERSION,
+        "sample_fps": int(sample_fps),
+        "mouth_roi": dict(DEFAULT_MOUTH_ROI if roi is None else roi),
+        "frame_width": DEFAULT_FRAME_WIDTH,
+        "frame_height": DEFAULT_FRAME_HEIGHT,
+        "audio_samples_per_window": AUDIO_SAMPLES_PER_WINDOW,
+        "minimum_mouth_motion_mean": float(minimum_mean),
+        "minimum_mouth_motion_p95": float(minimum_p95),
+        "manual_criteria": list(MANUAL_CRITERIA),
+    }
+
+
+def presenter_qa_policy_fingerprint(policy: dict[str, Any]) -> str:
+    return stable_hash(policy)
 
 
 def _decode_gray_frames(
@@ -87,8 +115,7 @@ def summarize_motion(deltas: Sequence[float]) -> dict[str, float | int]:
 
 
 def _audio_envelope(video: Path, fps: int) -> list[float]:
-    samples_per_window = 100
-    sample_rate = fps * samples_per_window
+    sample_rate = fps * AUDIO_SAMPLES_PER_WINDOW
     result = subprocess.run(
         [
             "ffmpeg",
@@ -115,9 +142,9 @@ def _audio_envelope(video: Path, fps: int) -> list[float]:
     samples = struct.unpack(f"<{count}f", result.stdout[: count * 4])
     return [
         math.sqrt(sum(sample * sample for sample in window) / len(window))
-        for offset in range(0, len(samples), samples_per_window)
-        if len(window := samples[offset : offset + samples_per_window])
-        == samples_per_window
+        for offset in range(0, len(samples), AUDIO_SAMPLES_PER_WINDOW)
+        if len(window := samples[offset : offset + AUDIO_SAMPLES_PER_WINDOW])
+        == AUDIO_SAMPLES_PER_WINDOW
     ]
 
 
@@ -183,6 +210,12 @@ def evaluate_presenter_qa(
     manual_review: dict[str, str | None] | None = None,
     notes: str | None = None,
 ) -> dict[str, Any]:
+    policy = build_presenter_qa_policy(
+        sample_fps=int(analysis.get("sample_fps", DEFAULT_SAMPLE_FPS)),
+        minimum_mean=minimum_mean,
+        minimum_p95=minimum_p95,
+        roi=analysis.get("mouth_roi"),
+    )
     motion = analysis["motion"]
     screen_checks = {
         "mean_mouth_motion": {
@@ -227,9 +260,11 @@ def evaluate_presenter_qa(
     else:
         status = "pending"
     return {
-        "version": 1,
+        "version": 2,
         "status": status,
         "source_sha256": analysis["video_sha256"],
+        "policy": policy,
+        "policy_fingerprint": presenter_qa_policy_fingerprint(policy),
         "automatic_visible_motion_screen": {
             "status": screen_status,
             "checks": screen_checks,

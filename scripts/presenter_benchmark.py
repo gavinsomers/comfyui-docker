@@ -42,9 +42,9 @@ DEFAULT_PROMPT = (
 ENGINE_SETTINGS = {
     "ltx23_presenter": {"width": 1024, "height": 576},
     "ltx25_presenter": {"width": 1024, "height": 576},
-    # 1024x576 exhausted 32 GB on the RTX 5090 proof. This retains identical
-    # 16:9 center-crop framing while using LongCat's practical local resolution.
-    "longcat_avatar_presenter": {"width": 832, "height": 480},
+    # 1024x576 exhausted 32 GB on the RTX 5090 proof. This retains the exact
+    # 16:9 center-crop framing at LongCat's practical local resolution.
+    "longcat_avatar_presenter": {"width": 768, "height": 432},
 }
 
 

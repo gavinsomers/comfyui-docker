@@ -53,7 +53,6 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "require_pass_before_assembly": {"type": "boolean"},
             "sample_fps": {"type": "integer", "minimum": 1, "maximum": 60},
             "minimum_mouth_motion_mean": {"type": "number", "minimum": 0},
             "minimum_mouth_motion_p95": {"type": "number", "minimum": 0}

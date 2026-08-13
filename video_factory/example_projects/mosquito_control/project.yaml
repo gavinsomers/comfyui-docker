@@ -33,7 +33,6 @@ presenter:
     no cuts, no zoom, no hand gestures entering frame, no subtitles, no text,
     no logos, and no identity change.
   qa:
-    require_pass_before_assembly: true
     sample_fps: 12
     minimum_mouth_motion_mean: 5.0
     minimum_mouth_motion_p95: 9.0

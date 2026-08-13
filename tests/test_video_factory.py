@@ -16,6 +16,8 @@ from scripts.video_factory import (
     presenter_qa_failures,
     render_narration,
 )
+from scripts.presenter_benchmark import ENGINE_SETTINGS
+from spider.userscripts_dir.presenter_benchmark_deps import requirements_satisfied
 from video_factory.core import (
     FACTORY_ROOT,
     build_adapter_prompt,
@@ -26,7 +28,13 @@ from video_factory.core import (
     stable_hash,
     write_srt,
 )
-from video_factory.qa import evaluate_presenter_qa, summarize_motion
+from video_factory.qa import (
+    DEFAULT_MOUTH_ROI,
+    build_presenter_qa_policy,
+    evaluate_presenter_qa,
+    presenter_qa_policy_fingerprint,
+    summarize_motion,
+)
 
 
 EXAMPLE_PROJECT = (
@@ -157,8 +165,8 @@ class AdapterTests(unittest.TestCase):
                 "prompt": "The same test prompt for every local engine.",
                 "seed": 99,
                 "duration": 4.017,
-                "width": 832,
-                "height": 480,
+                "width": 768,
+                "height": 432,
                 "image": "video_factory/test/master.png",
                 "audio": "video_factory/test/s0003.wav",
                 "output_prefix": "video_factory/test/longcat",
@@ -171,6 +179,11 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(prompt["134"]["inputs"]["blocks_to_swap"], 35)
         self.assertEqual(prompt["453"]["inputs"]["filename_prefix"], "video_factory/test/longcat")
 
+    def test_presenter_benchmark_engines_use_exactly_matching_aspect_ratios(self):
+        for engine, dimensions in ENGINE_SETTINGS.items():
+            with self.subTest(engine=engine):
+                self.assertEqual(dimensions["width"] * 9, dimensions["height"] * 16)
+
     def test_stable_hash_ignores_dictionary_insertion_order(self):
         self.assertEqual(stable_hash({"a": 1, "b": 2}), stable_hash({"b": 2, "a": 1}))
 
@@ -180,6 +193,8 @@ class PresenterQATests(unittest.TestCase):
     def _analysis(mean: float, p95: float) -> dict:
         return {
             "video_sha256": "abc123",
+            "sample_fps": 12,
+            "mouth_roi": DEFAULT_MOUTH_ROI,
             "motion": {
                 "mean_absolute_luma_delta": mean,
                 "p95_absolute_luma_delta": p95,
@@ -250,7 +265,7 @@ class PresenterQATests(unittest.TestCase):
             video.write_bytes(b"presenter")
             context = {
                 "project": {
-                    "presenter": {"qa": {"require_pass_before_assembly": True}}
+                    "presenter": {"qa": {"require_pass_before_assembly": False}}
                 }
             }
             manifest = {"shots": [{"shot_id": "s0001", "type": "presenter"}]}
@@ -277,7 +292,56 @@ class PresenterQATests(unittest.TestCase):
                 ["s0001 (QA stale)"],
             )
             state["assets"]["shot:s0001"]["qa"]["source_sha256"] = sha256_file(video)
+            self.assertEqual(
+                presenter_qa_failures(context, manifest, state),
+                ["s0001 (QA stale)"],
+            )
+            state["assets"]["shot:s0001"]["qa"]["policy_fingerprint"] = (
+                presenter_qa_policy_fingerprint(build_presenter_qa_policy())
+            )
             self.assertEqual(presenter_qa_failures(context, manifest, state), [])
+
+            context["project"]["presenter"]["qa"]["sample_fps"] = 13
+            self.assertEqual(
+                presenter_qa_failures(context, manifest, state),
+                ["s0001 (QA stale)"],
+            )
+
+    def test_assembly_gate_does_not_affect_projects_without_presenter_shots(self):
+        manifest = {"shots": [{"shot_id": "s0001", "type": "still"}]}
+
+        self.assertEqual(presenter_qa_failures({"project": {}}, manifest, {}), [])
+
+    def test_presenter_qa_fingerprint_covers_roi_thresholds_and_algorithm(self):
+        baseline = presenter_qa_policy_fingerprint(build_presenter_qa_policy())
+        changed_roi = dict(DEFAULT_MOUTH_ROI, width=0.2)
+
+        self.assertNotEqual(
+            baseline,
+            presenter_qa_policy_fingerprint(
+                build_presenter_qa_policy(roi=changed_roi)
+            ),
+        )
+        self.assertNotEqual(
+            baseline,
+            presenter_qa_policy_fingerprint(
+                build_presenter_qa_policy(minimum_mean=6.0)
+            ),
+        )
+        with patch("video_factory.qa.PRESENTER_QA_ALGORITHM_VERSION", 2):
+            self.assertNotEqual(
+                baseline,
+                presenter_qa_policy_fingerprint(build_presenter_qa_policy()),
+            )
+
+
+class PresenterBenchmarkDependencyTests(unittest.TestCase):
+    def test_dependency_preflight_rejects_missing_or_outdated_distributions(self):
+        self.assertTrue(requirements_satisfied(("pip>=0",), ("json",)))
+        self.assertFalse(requirements_satisfied(("pip>=9999",), ("json",)))
+        self.assertFalse(
+            requirements_satisfied(("definitely-not-installed>=1",), ("json",))
+        )
 
 
 class NarrationConformanceTests(unittest.TestCase):

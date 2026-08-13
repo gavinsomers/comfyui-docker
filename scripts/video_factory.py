@@ -36,7 +36,9 @@ from video_factory.core import (  # noqa: E402
 from video_factory.qa import (  # noqa: E402
     MANUAL_CRITERIA,
     analyze_presenter_video,
+    build_presenter_qa_policy,
     evaluate_presenter_qa,
+    presenter_qa_policy_fingerprint,
     write_contact_sheets,
 )
 
@@ -487,8 +489,12 @@ def presenter_qa_failures(
     context: dict[str, Any], manifest: dict[str, Any], state: dict[str, Any]
 ) -> list[str]:
     qa_config = context.get("project", {}).get("presenter", {}).get("qa", {})
-    if not qa_config.get("require_pass_before_assembly", False):
-        return []
+    policy = build_presenter_qa_policy(
+        sample_fps=int(qa_config.get("sample_fps", 12)),
+        minimum_mean=float(qa_config.get("minimum_mouth_motion_mean", 5.0)),
+        minimum_p95=float(qa_config.get("minimum_mouth_motion_p95", 9.0)),
+    )
+    expected_policy_fingerprint = presenter_qa_policy_fingerprint(policy)
     failures = []
     for shot in manifest["shots"]:
         if shot.get("type") != "presenter":
@@ -499,7 +505,10 @@ def presenter_qa_failures(
             failures.append(f"{shot['shot_id']} (QA missing)")
             continue
         output_path = Path(record["output_path"])
-        if qa.get("source_sha256") != sha256_file(output_path):
+        if (
+            qa.get("source_sha256") != sha256_file(output_path)
+            or qa.get("policy_fingerprint") != expected_policy_fingerprint
+        ):
             failures.append(f"{shot['shot_id']} (QA stale)")
         elif qa.get("status") != "pass":
             failures.append(f"{shot['shot_id']} (QA {qa.get('status', 'unknown')})")
@@ -812,9 +821,11 @@ def command_qa_presenter(args: argparse.Namespace) -> int:
         raise ValueError("Manual QA flags require --shot-id so one shot is reviewed at a time")
 
     qa_config = context["project"]["presenter"].get("qa", {})
-    minimum_mean = float(qa_config.get("minimum_mouth_motion_mean", 5.0))
-    minimum_p95 = float(qa_config.get("minimum_mouth_motion_p95", 9.0))
-    sample_fps = int(qa_config.get("sample_fps", 12))
+    policy = build_presenter_qa_policy(
+        sample_fps=int(qa_config.get("sample_fps", 12)),
+        minimum_mean=float(qa_config.get("minimum_mouth_motion_mean", 5.0)),
+        minimum_p95=float(qa_config.get("minimum_mouth_motion_p95", 9.0)),
+    )
     report = {"version": 1, "project": context["slug"], "shots": {}}
     for shot in selected:
         key = f"shot:{shot['shot_id']}"
@@ -822,7 +833,11 @@ def command_qa_presenter(args: argparse.Namespace) -> int:
         if not record:
             raise FileNotFoundError(f"Presenter shot is not rendered: {shot['shot_id']}")
         video = Path(record["output_path"])
-        analysis = analyze_presenter_video(video, sample_fps=sample_fps)
+        analysis = analyze_presenter_video(
+            video,
+            roi=policy["mouth_roi"],
+            sample_fps=policy["sample_fps"],
+        )
         existing_qa = record.get("qa", {})
         existing_review = (
             existing_qa.get("manual_review", {}).get("criteria", {})
@@ -836,8 +851,8 @@ def command_qa_presenter(args: argparse.Namespace) -> int:
         existing_notes = existing_qa.get("manual_review", {}).get("notes", "")
         qa = evaluate_presenter_qa(
             analysis,
-            minimum_mean=minimum_mean,
-            minimum_p95=minimum_p95,
+            minimum_mean=policy["minimum_mouth_motion_mean"],
+            minimum_p95=policy["minimum_mouth_motion_p95"],
             manual_review=manual_review,
             notes=args.notes if args.notes is not None else existing_notes,
         )

@@ -16,6 +16,6 @@
   "output_node": "453",
   "limitations": [
     "The template renders one fixed 65-frame window at 16 fps.",
-    "The RTX 5090 proof required 832x480 and 35 swapped blocks; 1024x576 exhausted 32 GB VRAM."
+    "The RTX 5090 proof uses 768x432 and 35 swapped blocks with 25,235 MiB peak observed total GPU memory; 1024x576 exhausted 32 GB VRAM."
   ]
 }
