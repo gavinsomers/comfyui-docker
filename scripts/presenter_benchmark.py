@@ -20,10 +20,15 @@ from video_factory.core import (  # noqa: E402
     DEFAULT_BASEDIR,
     DEFAULT_SERVER,
     ffprobe_duration,
+    request_json,
     render_adapter,
     sha256_file,
     stage_input,
     write_json_atomic,
+)
+from spider.userscripts_dir.presenter_benchmark_deps import (  # noqa: E402
+    format_missing_custom_nodes,
+    missing_registered_nodes,
 )
 from video_factory.qa import (  # noqa: E402
     analyze_presenter_video,
@@ -46,6 +51,15 @@ ENGINE_SETTINGS = {
     # 16:9 center-crop framing at LongCat's practical local resolution.
     "longcat_avatar_presenter": {"width": 768, "height": 432},
 }
+
+
+def preflight_longcat_nodes(server: str) -> None:
+    object_info = request_json(server, "GET", "/object_info")
+    if not isinstance(object_info, dict):
+        raise RuntimeError("ComfyUI /object_info returned an invalid response")
+    missing = missing_registered_nodes(object_info)
+    if missing:
+        raise RuntimeError(format_missing_custom_nodes(missing))
 
 
 class GpuMonitor:
@@ -257,6 +271,8 @@ def main() -> int:
             "The included LongCat benchmark template is one 65-frame window and "
             "requires approximately four seconds of audio"
         )
+    if "longcat_avatar_presenter" in args.engines:
+        preflight_longcat_nodes(args.server)
 
     image_name = stage_input(
         image,

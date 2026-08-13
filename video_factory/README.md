@@ -160,9 +160,26 @@ python3 scripts/presenter_benchmark.py \
 The bundled LongCat graph is intentionally a one-window experimental adapter
 for approximately four-second proofs. On the RTX 5090, 1024x576 exhausted 32 GB
 VRAM; 768x432 with 35 swapped transformer blocks completed in 264 seconds with
-25,235 MiB peak observed total GPU memory. Its optional custom
-node dependencies are installed and verified by
-`spider/userscripts_dir/08-install-presenter-benchmark-deps.sh`.
+25,235 MiB peak observed total GPU memory. Its optional Python dependencies and
+custom-node provider sources are verified by
+`spider/userscripts_dir/08-install-presenter-benchmark-deps.sh`; the benchmark
+also checks ComfyUI's `/object_info` registry before submitting a LongCat graph.
+The setup script fails with the missing classes and provider revision instead of
+modifying the ignored runtime custom-node tree.
+
+Install the four providers under `spider/custom_nodes/` when the preflight names
+them, then restart ComfyUI:
+
+```bash
+git clone --branch longcat_avatar https://github.com/kijai/ComfyUI-WanVideoWrapper.git spider/custom_nodes/ComfyUI-WanVideoWrapper
+git clone https://github.com/kijai/ComfyUI-KJNodes.git spider/custom_nodes/ComfyUI-KJNodes
+git clone https://github.com/kijai/ComfyUI-MelBandRoFormer.git spider/custom_nodes/ComfyUI-MelBandRoFormer
+git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git spider/custom_nodes/ComfyUI-VideoHelperSuite
+```
+
+The WanVideoWrapper provider must expose the `longcat_avatar` revision. Existing
+provider directories should be updated in place to the revisions reported by
+the preflight rather than cloned over.
 
 Runtime output is written to:
 

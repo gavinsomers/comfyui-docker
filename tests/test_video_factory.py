@@ -1,5 +1,7 @@
 import argparse
 import json
+import os
+import subprocess
 import tempfile
 import unittest
 from collections import Counter
@@ -18,8 +20,15 @@ from scripts.video_factory import (
     presenter_qa_failures,
     render_narration,
 )
-from scripts.presenter_benchmark import ENGINE_SETTINGS
-from spider.userscripts_dir.presenter_benchmark_deps import requirements_satisfied
+from scripts.presenter_benchmark import ENGINE_SETTINGS, preflight_longcat_nodes
+from spider.userscripts_dir.presenter_benchmark_deps import (
+    CORE_NODE_CLASSES,
+    CUSTOM_NODE_PROVIDERS,
+    format_missing_custom_nodes,
+    missing_custom_node_sources,
+    missing_registered_nodes,
+    requirements_satisfied,
+)
 from video_factory.core import (
     FACTORY_ROOT,
     build_adapter_prompt,
@@ -408,6 +417,99 @@ class PresenterBenchmarkDependencyTests(unittest.TestCase):
         self.assertFalse(
             requirements_satisfied(("definitely-not-installed>=1",), ("json",))
         )
+
+    def test_longcat_provider_manifest_covers_every_non_core_workflow_class(self):
+        template = json.loads(
+            (
+                FACTORY_ROOT
+                / "api_templates"
+                / "longcat_avatar_presenter.json"
+            ).read_text(encoding="utf-8")
+        )
+        workflow_classes = {node["class_type"] for node in template.values()}
+        mapped_classes = {
+            node_class
+            for provider in CUSTOM_NODE_PROVIDERS.values()
+            for node_class in provider["classes"]
+        }
+
+        self.assertEqual(workflow_classes - set(CORE_NODE_CLASSES), mapped_classes)
+
+    def test_custom_node_source_preflight_reports_absent_providers(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            missing = missing_custom_node_sources(root)
+
+        self.assertEqual(set(missing), set(CUSTOM_NODE_PROVIDERS))
+        guidance = format_missing_custom_nodes(missing, root)
+        self.assertIn("ComfyUI-WanVideoWrapper", guidance)
+        self.assertIn("longcat_avatar", guidance)
+        self.assertIn(str(root / "ComfyUI-WanVideoWrapper"), guidance)
+
+    def test_startup_preflight_fails_before_pip_when_providers_are_absent(self):
+        script = (
+            FACTORY_ROOT.parent
+            / "spider"
+            / "userscripts_dir"
+            / "08-install-presenter-benchmark-deps.sh"
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            activation = root / "activate"
+            activation.write_text("", encoding="utf-8")
+            result = subprocess.run(
+                ["bash", str(script)],
+                capture_output=True,
+                text=True,
+                env={
+                    **os.environ,
+                    "PRESENTER_BENCHMARK_VENV_ACTIVATE": str(activation),
+                    "PRESENTER_BENCHMARK_CUSTOM_NODES_DIR": str(
+                        root / "custom_nodes"
+                    ),
+                },
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("LongCat custom-node preflight failed", result.stderr)
+        self.assertNotIn("Installing presenter benchmark dependencies", result.stdout)
+
+    def test_custom_node_source_preflight_accepts_complete_providers(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            for provider_name, provider in CUSTOM_NODE_PROVIDERS.items():
+                provider_dir = root / provider_name
+                provider_dir.mkdir()
+                (provider_dir / "nodes.py").write_text(
+                    "\n".join(provider["classes"]), encoding="utf-8"
+                )
+
+            self.assertEqual(missing_custom_node_sources(root), {})
+
+    def test_registered_node_preflight_groups_missing_classes_by_provider(self):
+        available = set(CORE_NODE_CLASSES)
+        for provider in CUSTOM_NODE_PROVIDERS.values():
+            available.update(provider["classes"])
+        available.remove("VHS_VideoCombine")
+
+        self.assertEqual(
+            missing_registered_nodes(available),
+            {"ComfyUI-VideoHelperSuite": ("VHS_VideoCombine",)},
+        )
+
+    def test_benchmark_preflight_fails_before_rendering_missing_server_nodes(self):
+        available = {
+            node_class: {}
+            for provider in CUSTOM_NODE_PROVIDERS.values()
+            for node_class in provider["classes"]
+            if node_class != "WanVideoLongCatAvatarExtendEmbeds"
+        }
+        with patch("scripts.presenter_benchmark.request_json", return_value=available):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "longcat_avatar.*WanVideoLongCatAvatarExtendEmbeds",
+            ):
+                preflight_longcat_nodes("http://127.0.0.1:8188")
 
 
 class NarrationConformanceTests(unittest.TestCase):
