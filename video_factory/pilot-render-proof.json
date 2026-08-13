@@ -1,0 +1,31 @@
+{
+  "project": "mosquito-control-pilot",
+  "rendered_at": "2026-08-13T14:52:34+01:00",
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 5090",
+    "driver": "580.173.02",
+    "cuda": "13.0"
+  },
+  "shots": {
+    "total": 20,
+    "broll": 8,
+    "still": 7,
+    "presenter": 5
+  },
+  "delivery": {
+    "video": {
+      "codec": "H.264",
+      "width": 1920,
+      "height": 1080,
+      "pixel_format": "yuv420p",
+      "fps": 24
+    },
+    "audio": {
+      "codec": "AAC",
+      "channels": 1
+    },
+    "duration_seconds": 88.000,
+    "bytes": 73774189,
+    "sha256": "34cfa2a311f057390d246aec88a03d59b70f78c21753eb8584e3bce20420185c"
+  }
+}

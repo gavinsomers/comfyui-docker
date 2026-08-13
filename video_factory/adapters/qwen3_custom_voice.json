@@ -1,0 +1,16 @@
+{
+  "name": "qwen3_custom_voice",
+  "description": "Qwen3-TTS narration using one of the local preset voices.",
+  "template": "api_templates/qwen3_custom_voice.json",
+  "required_slots": ["text", "speaker", "language", "seed", "max_new_tokens", "output_prefix"],
+  "slots": {
+    "text": {"node": "2", "input": "text"},
+    "speaker": {"node": "2", "input": "speaker"},
+    "instruct": {"node": "2", "input": "instruct"},
+    "language": {"node": "2", "input": "language"},
+    "seed": {"node": "2", "input": "seed"},
+    "max_new_tokens": {"node": "2", "input": "max_new_tokens"},
+    "output_prefix": {"node": "3", "input": "filename_prefix"}
+  },
+  "output_node": "3"
+}

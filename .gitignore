@@ -4,8 +4,33 @@
 # Large Data Directories (CRITICAL - 900GB+ of data)
 # ============================================================================
 
-# Shared data directory containing models, outputs, inputs
-basedir/
+# Shared data directory containing models, outputs, inputs.
+# Keep selected reusable workflow JSONs tracked below.
+basedir/*
+!basedir/user/
+basedir/user/*
+!basedir/user/default/
+basedir/user/default/*
+!basedir/user/default/workflows/
+basedir/user/default/workflows/*
+!basedir/user/default/workflows/audio/
+basedir/user/default/workflows/audio/*
+!basedir/user/default/workflows/audio/qwen3_tts_voice_clone.json
+!basedir/user/default/workflows/audio/qwen3_tts_record_voice_clone.json
+!basedir/user/default/workflows/video/
+basedir/user/default/workflows/video/*
+!basedir/user/default/workflows/video/ltx2_3_talking_portrait_ia2v.json
+!basedir/user/default/workflows/video/ltx2_3_talking_portrait_lipsync_retry.json
+!basedir/user/default/workflows/video/dacrikka_ltx2_3_lipsync_exact.json
+!basedir/user/default/workflows/video/dacrikka_ltx2_3_lipsync_code205.json
+!basedir/user/default/workflows/video/talking_portrait_infinite_talk.json
+!basedir/user/default/workflows/video/talking_portrait_longcat_avatar.json
+!basedir/user/default/workflows/video/code205_gavin_youtube_talking_head_ltx2_3.json
+
+# Runtime ComfyUI source, venv, caches, and installed custom nodes.
+spider/run/
+spider/custom_nodes/
+spider/.claude/
 
 # Workflow runtime directories (ComfyUI source, venvs, caches)
 wf_*/run/

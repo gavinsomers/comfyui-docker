@@ -1,0 +1,65 @@
+version: 1
+seed: 509000
+project:
+  slug: mosquito-control-pilot
+  title: A Better Backyard Mosquito Routine
+profile: authority_explainer_v1
+subject:
+  topic: practical backyard mosquito source reduction
+  product: a correctly labelled BTI mosquito-control product
+  environment: a modest green rural American homestead in summer
+  audience: homeowners who want a pollinator-conscious mosquito routine
+presenter:
+  mode: generated
+  image_engine: z_image_turbo
+  seed: 509001
+  image_prompt: >-
+    Realistic chest-up documentary portrait of an original fictional male rural
+    homesteader in his late forties, with a long dark beard, strong eyebrows,
+    weathered but friendly face, plain white collarless work shirt, black
+    suspenders, and a simple natural straw hat. He faces the camera inside a
+    modest traditional farmhouse room with cream walls, dark wooden trim, one
+    bright window on each side, and soft natural daylight. Symmetrical
+    eye-level framing, 16:9 landscape composition, ordinary consumer-camera
+    realism, restrained colour, stable simple background. This is an invented
+    person and must not resemble a public figure. No text, logos, watermarks,
+    extra people, or objects covering the face.
+  animation_prompt: >-
+    The same fictional rural homesteader from the input portrait speaks
+    directly to camera in a chest-up composition. Natural lip movement follows
+    the supplied narration, with restrained blinking, tiny head movements, and
+    modest facial expression. Preserve his exact face, beard, straw hat, white
+    shirt, suspenders, room, lighting, and camera distance. Locked-off camera,
+    no cuts, no zoom, no hand gestures entering frame, no subtitles, no text,
+    no logos, and no identity change.
+voice:
+  mode: custom_voice
+  engine: qwen3_custom_voice
+  speaker: Ryan
+  language: English
+  seed: 509002
+  target_words_per_minute: 163
+  max_new_tokens: 8192
+  instruct: >-
+    Calm, practical American documentary narration from a middle-aged man.
+    Conversational and trustworthy, with clear emphasis and no exaggerated
+    sales delivery. Maintain an efficient pace near 160 words per minute.
+content:
+  script_file: script.md
+  storyboard_file: storyboard.yaml
+style:
+  global: realistic low-budget rural documentary recorded on an ordinary camera
+  broll: >-
+    ordinary handheld smartphone footage, natural summer daylight, slightly
+    soft detail, imperfect amateur framing, restrained motion, practical and
+    unpolished rather than cinematic
+  still: >-
+    realistic documentary photograph, natural daylight, ordinary rural garden,
+    slightly imperfect framing, restrained colour, no commercial polish
+  constraints: >-
+    No text, subtitles, labels that can be read, logos, trademarks, watermarks,
+    split screens, collages, surreal elements, malformed hands, or duplicate objects.
+engines:
+  presenter: ltx23_presenter
+  broll: ltx25_t2v
+  still: z_image_turbo

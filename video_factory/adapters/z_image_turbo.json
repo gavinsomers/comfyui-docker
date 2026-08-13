@@ -1,0 +1,14 @@
+{
+  "name": "z_image_turbo",
+  "description": "Fast local still-image generation with Z-Image Turbo.",
+  "template": "api_templates/z_image_turbo.json",
+  "required_slots": ["prompt", "seed", "width", "height", "output_prefix"],
+  "slots": {
+    "prompt": {"node": "45", "input": "text"},
+    "seed": {"node": "44", "input": "seed"},
+    "width": {"node": "41", "input": "width"},
+    "height": {"node": "41", "input": "height"},
+    "output_prefix": {"node": "9", "input": "filename_prefix"}
+  },
+  "output_node": "9"
+}

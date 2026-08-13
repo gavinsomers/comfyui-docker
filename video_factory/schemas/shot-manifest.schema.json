@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "shot-manifest.schema.json",
+  "title": "Compiled video factory shot manifest",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "version",
+    "project",
+    "format_profile",
+    "duration",
+    "delivery",
+    "shots"
+  ],
+  "properties": {
+    "version": {"const": 1},
+    "project": {"type": "string", "minLength": 1},
+    "format_profile": {"type": "string", "minLength": 1},
+    "duration": {"type": "number", "exclusiveMinimum": 0},
+    "word_count": {"type": "integer", "minimum": 1},
+    "delivery": {
+      "type": "object",
+      "required": ["width", "height", "fps"],
+      "properties": {
+        "width": {"type": "integer", "minimum": 64},
+        "height": {"type": "integer", "minimum": 64},
+        "fps": {"type": "integer", "minimum": 1}
+      }
+    },
+    "shots": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "shot_id",
+          "index",
+          "type",
+          "engine",
+          "start",
+          "end",
+          "duration",
+          "narration",
+          "prompt",
+          "seed"
+        ],
+        "properties": {
+          "shot_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+          "index": {"type": "integer", "minimum": 1},
+          "type": {"enum": ["presenter", "broll", "still"]},
+          "engine": {"type": "string", "minLength": 1},
+          "start": {"type": "number", "minimum": 0},
+          "end": {"type": "number", "exclusiveMinimum": 0},
+          "duration": {"type": "number", "exclusiveMinimum": 0},
+          "narration": {"type": "string", "minLength": 1},
+          "prompt": {"type": "string", "minLength": 1},
+          "seed": {"type": "integer", "minimum": 0},
+          "asset": {"type": ["string", "null"]},
+          "status": {"type": "string"}
+        }
+      }
+    }
+  }
+}
