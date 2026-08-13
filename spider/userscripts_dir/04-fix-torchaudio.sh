@@ -5,6 +5,7 @@
 
 set -e
 
+# shellcheck source=/dev/null
 source /comfy/mnt/venv/bin/activate || exit 1
 
 install_matching_torch_stack() {

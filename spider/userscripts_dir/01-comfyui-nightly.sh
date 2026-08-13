@@ -12,7 +12,7 @@ set -e
 
 error_exit() {
   echo -n "!! ERROR: "
-  echo $*
+  echo "$*"
   echo "!! Exiting script (ID: $$)"
   exit 1
 }

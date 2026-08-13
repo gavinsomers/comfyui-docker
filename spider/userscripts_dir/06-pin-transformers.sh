@@ -7,11 +7,12 @@ set -e
 
 error_exit() {
   echo -n "!! ERROR: "
-  echo $*
+  echo "$*"
   echo "!! Exiting script (ID: $$)"
   exit 1
 }
 
+# shellcheck source=/dev/null
 source /comfy/mnt/venv/bin/activate || error_exit "Failed to activate virtualenv"
 
 echo "== Pinning transformers and huggingface-hub =="

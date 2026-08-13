@@ -40,10 +40,10 @@ remain local runtime data.
 
 ## Runtime
 
-The active Docker service lives in `spider/`:
+From the repository root, start the active Docker service in `spider/`:
 
 ```bash
-cd /home/gavman/code/forks/comfy/spider
+cd spider
 docker compose up -d
 ```
 
@@ -107,6 +107,7 @@ Rendered runbook: `docs/qwen3-tts-long-script-runbook.png`.
 
 ```bash
 python3 scripts/qwen3_batch_tts.py \
+  --basedir basedir \
   --reference-audio my_voice_ref.wav \
   --reference-text "exact words read in the reference recording" \
   --script-file /path/to/long_script.txt \
