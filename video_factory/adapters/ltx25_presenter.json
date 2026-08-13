@@ -1,0 +1,17 @@
+{
+  "name": "ltx25_presenter",
+  "description": "Fully local LTX 2.5 image-and-supplied-audio presenter generation.",
+  "template": "api_templates/ltx25_presenter.json",
+  "required_slots": ["prompt", "seed", "duration", "width", "height", "image", "audio", "output_prefix"],
+  "slots": {
+    "prompt": {"node": "405:376", "input": "value"},
+    "seed": {"node": "405:339", "input": "noise_seed"},
+    "duration": {"node": "405:362", "input": "value"},
+    "width": {"node": "405:372", "input": "value"},
+    "height": {"node": "405:360", "input": "value"},
+    "image": {"node": "269", "input": "image"},
+    "audio": {"node": "346", "input": "audio"},
+    "output_prefix": {"node": "75", "input": "filename_prefix"}
+  },
+  "output_node": "75"
+}

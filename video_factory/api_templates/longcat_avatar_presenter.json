@@ -1,0 +1,373 @@
+{
+  "122": {
+    "inputs": {
+      "model": "LongCat-Avatar_comfy_bf16.safetensors",
+      "base_precision": "bf16",
+      "quantization": "disabled",
+      "load_device": "offload_device",
+      "attention_mode": "sageattn",
+      "rms_norm_function": "default",
+      "block_swap_args": [
+        "134",
+        0
+      ],
+      "lora": [
+        "138",
+        0
+      ]
+    },
+    "class_type": "WanVideoModelLoader",
+    "_meta": {
+      "title": "LongCat Avatar Model Loader"
+    }
+  },
+  "125": {
+    "inputs": {
+      "audio": "video_factory/presenter.wav"
+    },
+    "class_type": "LoadAudio",
+    "_meta": {
+      "title": "Narration Audio File"
+    }
+  },
+  "129": {
+    "inputs": {
+      "model_name": "Wan2_1_VAE_bf16.safetensors",
+      "precision": "bf16",
+      "use_cpu_cache": false,
+      "verbose": false
+    },
+    "class_type": "WanVideoVAELoader",
+    "_meta": {
+      "title": "WanVideo VAE Loader"
+    }
+  },
+  "134": {
+    "inputs": {
+      "blocks_to_swap": 35,
+      "offload_img_emb": true,
+      "offload_txt_emb": true,
+      "use_non_blocking": false,
+      "vace_blocks_to_swap": 0,
+      "prefetch_blocks": 0,
+      "block_swap_debug": false
+    },
+    "class_type": "WanVideoBlockSwap",
+    "_meta": {
+      "title": "WanVideo Block Swap"
+    }
+  },
+  "137": {
+    "inputs": {
+      "model": "TencentGameMate/chinese-wav2vec2-base",
+      "base_precision": "fp16",
+      "load_device": "main_device"
+    },
+    "class_type": "DownloadAndLoadWav2VecModel",
+    "_meta": {
+      "title": "(Down)load Wav2Vec Model"
+    }
+  },
+  "138": {
+    "inputs": {
+      "lora": "LongCat_distill_lora_alpha64_bf16.safetensors",
+      "strength": 0.9,
+      "low_mem_load": false,
+      "merge_loras": false
+    },
+    "class_type": "WanVideoLoraSelect",
+    "_meta": {
+      "title": "LongCat Distill LoRA"
+    }
+  },
+  "194": {
+    "inputs": {
+      "normalize_loudness": true,
+      "num_frames": 65,
+      "fps": 16,
+      "audio_scale": 1,
+      "audio_cfg_scale": 2,
+      "multi_audio_type": "para",
+      "add_noise_floor": true,
+      "smooth_transients": true,
+      "wav2vec_model": [
+        "137",
+        0
+      ],
+      "audio_1": [
+        "302",
+        0
+      ]
+    },
+    "class_type": "MultiTalkWav2VecEmbeds",
+    "_meta": {
+      "title": "Multi/InfiniteTalk Wav2vec2 Embeds"
+    }
+  },
+  "241": {
+    "inputs": {
+      "model_name": "umt5-xxl-enc-bf16.safetensors",
+      "precision": "bf16",
+      "positive_prompt": "The same fictional rural homesteader from the input portrait speaks directly to camera in a chest-up composition. Natural lip movement follows the supplied narration, with restrained blinking, tiny head movements, and modest facial expression. Preserve his exact face, beard, straw hat, white shirt, suspenders, room, lighting, and camera distance. Locked-off camera, no cuts, no zoom, no hand gestures entering frame, no subtitles, no text, no logos, and no identity change.",
+      "negative_prompt": "closed mouth while speaking, static face, frozen smile, bright tones, overexposed, blurred details, subtitles, text, watermark, paintings, images, still picture, worst quality, low quality, ugly, incomplete, poorly drawn face, deformed, disfigured, misshapen limbs, fused fingers, messy background, many people in the background",
+      "quantization": "disabled",
+      "use_disk_cache": true,
+      "device": "gpu"
+    },
+    "class_type": "WanVideoTextEncodeCached",
+    "_meta": {
+      "title": "Talking Portrait Prompt"
+    }
+  },
+  "245": {
+    "inputs": {
+      "value": 832
+    },
+    "class_type": "INTConstant",
+    "_meta": {
+      "title": "Width"
+    }
+  },
+  "246": {
+    "inputs": {
+      "value": 480
+    },
+    "class_type": "INTConstant",
+    "_meta": {
+      "title": "Height"
+    }
+  },
+  "281": {
+    "inputs": {
+      "width": [
+        "245",
+        0
+      ],
+      "height": [
+        "246",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 16,
+      "device": "cpu",
+      "image": [
+        "284",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Resize Image v2"
+    }
+  },
+  "284": {
+    "inputs": {
+      "image": "video_factory/presenter.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Portrait Image"
+    }
+  },
+  "301": {
+    "inputs": {
+      "model_name": "MelBandRoformer_fp16.safetensors"
+    },
+    "class_type": "MelBandRoFormerModelLoader",
+    "_meta": {
+      "title": "Mel-Band RoFormer Model Loader"
+    }
+  },
+  "302": {
+    "inputs": {
+      "model": [
+        "301",
+        0
+      ],
+      "audio": [
+        "317",
+        0
+      ]
+    },
+    "class_type": "MelBandRoFormerSampler",
+    "_meta": {
+      "title": "Mel-Band RoFormer Sampler"
+    }
+  },
+  "312": {
+    "inputs": {
+      "enable_vae_tiling": false,
+      "tile_x": 272,
+      "tile_y": 272,
+      "tile_stride_x": 144,
+      "tile_stride_y": 128,
+      "noise_aug_strength": 0,
+      "latent_strength": 1,
+      "vae": [
+        "129",
+        0
+      ],
+      "image": [
+        "281",
+        0
+      ]
+    },
+    "class_type": "WanVideoEncode",
+    "_meta": {
+      "title": "WanVideo Encode"
+    }
+  },
+  "313": {
+    "inputs": {
+      "enable_vae_tiling": false,
+      "tile_x": 272,
+      "tile_y": 272,
+      "tile_stride_x": 144,
+      "tile_stride_y": 128,
+      "normalization": "default",
+      "vae": [
+        "129",
+        0
+      ],
+      "samples": [
+        "324",
+        0
+      ]
+    },
+    "class_type": "WanVideoDecode",
+    "_meta": {
+      "title": "WanVideo Decode"
+    }
+  },
+  "317": {
+    "inputs": {
+      "start_index": 0,
+      "duration": 4.017,
+      "audio": [
+        "125",
+        0
+      ]
+    },
+    "class_type": "TrimAudioDuration",
+    "_meta": {
+      "title": "Trim Audio Duration"
+    }
+  },
+  "324": {
+    "inputs": {
+      "cfg": [
+        "427",
+        0
+      ],
+      "seed": 509003,
+      "force_offload": true,
+      "add_noise_to_samples": false,
+      "model": [
+        "122",
+        0
+      ],
+      "image_embeds": [
+        "345",
+        0
+      ],
+      "scheduler": [
+        "325",
+        0
+      ],
+      "text_embeds": [
+        "241",
+        0
+      ]
+    },
+    "class_type": "WanVideoSamplerv2",
+    "_meta": {
+      "title": "WanVideo Sampler v2"
+    }
+  },
+  "325": {
+    "inputs": {
+      "scheduler": "longcat_distill_euler",
+      "steps": 12,
+      "shift": 12,
+      "start_step": 0,
+      "end_step": -1,
+      "enhance_hf": false
+    },
+    "class_type": "WanVideoSchedulerv2",
+    "_meta": {
+      "title": "WanVideo Scheduler v2"
+    }
+  },
+  "345": {
+    "inputs": {
+      "num_frames": [
+        "438",
+        0
+      ],
+      "overlap": 1,
+      "frames_processed": 0,
+      "if_not_enough_audio": "pad_with_start",
+      "ref_frame_index": 10,
+      "ref_mask_frame_range": 3,
+      "prev_latents": [
+        "312",
+        0
+      ],
+      "audio_embeds": [
+        "194",
+        0
+      ]
+    },
+    "class_type": "WanVideoLongCatAvatarExtendEmbeds",
+    "_meta": {
+      "title": "WanVideoLongCatAvatarExtendEmbeds"
+    }
+  },
+  "427": {
+    "inputs": {
+      "value": 1
+    },
+    "class_type": "FloatConstant",
+    "_meta": {
+      "title": "cfg"
+    }
+  },
+  "438": {
+    "inputs": {
+      "value": 65
+    },
+    "class_type": "INTConstant",
+    "_meta": {
+      "title": "frames_per_window"
+    }
+  },
+  "453": {
+    "inputs": {
+      "frame_rate": 16,
+      "loop_count": 0,
+      "filename_prefix": "video_factory/presenter",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": true,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "313",
+        0
+      ],
+      "audio": [
+        "317",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Save LongCat Talking Portrait Video"
+    }
+  }
+}

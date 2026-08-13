@@ -41,8 +41,14 @@ project.yaml + script.md + optional storyboard.yaml
 
 - `qwen3_custom_voice` — Qwen3-TTS preset-voice narration
 - `z_image_turbo` — fast presenter-master and still generation
-- `ltx23_presenter` — image-and-audio conditioned talking presenter
+- `ltx23_presenter` — legacy image-and-audio presenter baseline
+- `ltx25_presenter` — selected fully local LTX 2.5 image-and-supplied-audio presenter
+- `longcat_avatar_presenter` — experimental four-second LongCat Avatar benchmark adapter
 - `ltx25_t2v` — distilled LTX 2.5 text-to-video B-roll
+
+`ltx25_presenter` uses the local LTX 2.5 transformer, video VAE, audio VAE,
+text encoder, and latent upscaler. It does not use the paid/cloud
+`LtxApi25AudioToVideo` node.
 
 The API templates came from successful local workflows and expose only generic
 slots such as `prompt`, `seed`, `duration`, `image`, `audio`, and
@@ -61,12 +67,22 @@ The example is approximately 88 seconds at the profile's target speaking rate.
 Its 20-shot plan uses the same approximate visual ratio as the reference format:
 25% presenter, 40% generated B-roll, and 35% animated stills.
 
-## Local pilot proof
+## Local pilot and presenter proofs
 
 The mosquito-control pilot was rendered and assembled locally on an NVIDIA
 GeForce RTX 5090. The tracked [pilot render proof](pilot-render-proof.json)
 records the render environment, shot mix, probed delivery properties, byte size,
 and SHA-256 checksum without committing generated media.
+
+The first pilot failed presenter acceptance: LTX 2.3 preserved identity but
+showed almost no useful mouth articulation behind the heavy beard. A controlled
+same-image, same-audio, same-prompt benchmark then compared LTX 2.3, fully local
+LTX 2.5, and LongCat Avatar. The tracked
+[presenter benchmark proof](presenter-benchmark-proof.json) records render time,
+peak observed VRAM, objective lower-face motion diagnostics, and human visual
+review. LTX 2.5 won because it produced clear varied mouth shapes at 1024x576 in
+48 seconds. LongCat also articulated but took 285 seconds at 832x480 and was
+more exaggerated; LTX 2.3 remained a failed baseline.
 
 ## Commands
 
@@ -104,11 +120,43 @@ python3 scripts/video_factory.py render "$PROJECT" --module still --shot-id s000
 python3 scripts/video_factory.py status "$PROJECT"
 ```
 
-Assemble once every shot has an asset:
+Screen each presenter shot and record the required visual review:
+
+```bash
+python3 scripts/video_factory.py qa-presenter "$PROJECT" --shot-id s0003
+python3 scripts/video_factory.py qa-presenter "$PROJECT" --shot-id s0003 \
+  --visible-articulation pass \
+  --identity-stability pass \
+  --temporal-stability pass \
+  --notes "Clear changing phoneme shapes; stable face and beard."
+```
+
+The automatic lower-face motion check catches nearly frozen mouths. It is not a
+phoneme-level synchronisation model, so it can never replace the manual visible
+articulation review. When `presenter.qa.require_pass_before_assembly` is true,
+assembly rejects missing, stale, pending, or failed presenter QA records.
+Contact sheets and `presenter-qa.json` are written under the project runtime
+folder.
+
+Assemble once every shot has an asset and every required presenter review passes:
 
 ```bash
 python3 scripts/video_factory.py assemble "$PROJECT"
 ```
+
+Re-run the controlled three-engine benchmark with authorized input assets:
+
+```bash
+python3 scripts/presenter_benchmark.py \
+  --image /path/to/portrait.png \
+  --audio /path/to/four-second.wav
+```
+
+The bundled LongCat graph is intentionally a one-window experimental adapter
+for approximately four-second proofs. On the RTX 5090, 1024x576 exhausted 32 GB
+VRAM; 832x480 with 35 swapped transformer blocks succeeded. Its optional custom
+node dependencies are installed reproducibly by
+`spider/userscripts_dir/08-install-presenter-benchmark-deps.sh`.
 
 Runtime output is written to:
 

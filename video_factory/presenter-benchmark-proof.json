@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "hardware": "NVIDIA GeForce RTX 5090",
+  "status": "passed",
+  "selected_presenter_engine": "ltx25_presenter",
+  "selection_reason": "LTX 2.5 produced clear, varied visible mouth shapes while preserving identity and temporal stability, rendered 5.9 times faster than LongCat Avatar, and retained the requested 1024x576 proof resolution. LongCat articulated strongly but exaggerated a grin and introduced more head and upper-body movement. LTX 2.3 repeated a smile with little phoneme-shaped variation and failed the visible-articulation criterion.",
+  "inputs": {
+    "image_sha256": "edcb21e0ca7fa54a7351d6312d7272a6075f035e453f0d5ab554e214a4534340",
+    "audio_sha256": "10cb540b5d305cd487bdf58311b7389682f6360422b0212ceaa323e8ae5e1e7a",
+    "audio_duration_seconds": 4.017,
+    "seed": 509003,
+    "framing": "Identical 16:9 center crop; LongCat required 832x480 while both LTX proofs used 1024x576.",
+    "prompt": "The same fictional rural homesteader from the input portrait speaks directly to camera in a chest-up composition. Natural lip movement follows the supplied narration, with restrained blinking, tiny head movements, and modest facial expression. Preserve his exact face, beard, straw hat, white shirt, suspenders, room, lighting, and camera distance. Locked-off camera, no cuts, no zoom, no hand gestures entering frame, no subtitles, no text, no logos, and no identity change."
+  },
+  "results": [
+    {
+      "engine": "ltx23_presenter",
+      "resolution": "1024x576",
+      "render_seconds": 68.499,
+      "peak_memory_used_mib": 32066,
+      "mouth_motion_mean": 3.5843,
+      "mouth_motion_p95": 6.3322,
+      "audio_motion_correlation_zero_lag": -0.0033,
+      "visible_articulation": "fail",
+      "identity_stability": "pass",
+      "temporal_stability": "pass",
+      "beard_and_lip_visibility": "fail",
+      "notes": "Motion is dominated by blinking, head/expression change, and a sustained smile. Contact-sheet mouth shapes show little useful phoneme variation."
+    },
+    {
+      "engine": "ltx25_presenter",
+      "resolution": "1024x576",
+      "render_seconds": 48.045,
+      "peak_memory_used_mib": 32004,
+      "mouth_motion_mean": 6.8029,
+      "mouth_motion_p95": 12.7643,
+      "audio_motion_correlation_zero_lag": 0.4682,
+      "visible_articulation": "pass",
+      "identity_stability": "pass",
+      "temporal_stability": "pass",
+      "beard_and_lip_visibility": "pass",
+      "notes": "Best balance: clearly alternating closed, narrow, rounded, teeth, and open mouth shapes; stable identity; restrained enough motion; fastest result."
+    },
+    {
+      "engine": "longcat_avatar_presenter",
+      "resolution": "832x480",
+      "render_seconds": 285.052,
+      "peak_memory_used_mib": 28490,
+      "mouth_motion_mean": 7.8414,
+      "mouth_motion_p95": 15.0244,
+      "audio_motion_correlation_zero_lag": 0.1038,
+      "visible_articulation": "pass",
+      "identity_stability": "pass",
+      "temporal_stability": "pass",
+      "beard_and_lip_visibility": "pass",
+      "notes": "Strong articulation but more exaggerated open-mouth smiling and larger head or torso movement. 1024x576 and the workflow's original 25-block swap both exhausted 32 GB VRAM; 832x480 with 35 swapped blocks succeeded."
+    }
+  ],
+  "qa_thresholds": {
+    "minimum_mouth_motion_mean": 5.0,
+    "minimum_mouth_motion_p95": 9.0,
+    "purpose": "Objective frozen-mouth screen only. Final acceptance also requires human review of visible articulation, identity stability, and temporal stability."
+  },
+  "runtime_artifacts": {
+    "root": "basedir/output/video_factory/presenter-benchmark/",
+    "side_by_side": "basedir/output/video_factory/presenter-benchmark/presenter-benchmark-side-by-side.mp4",
+    "side_by_side_sha256": "b20a7d1590d33206bd2dde1586deda6af1edf8e1722ff1d259b7f5455f290745"
+  }
+}

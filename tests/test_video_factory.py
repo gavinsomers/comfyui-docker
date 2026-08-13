@@ -13,6 +13,7 @@ from scripts.video_factory import (
     assemble_project,
     conform_narration_speed,
     narration_path,
+    presenter_qa_failures,
     render_narration,
 )
 from video_factory.core import (
@@ -20,10 +21,12 @@ from video_factory.core import (
     build_adapter_prompt,
     compile_shot_manifest,
     load_project,
+    sha256_file,
     split_script_by_target_words,
     stable_hash,
     write_srt,
 )
+from video_factory.qa import evaluate_presenter_qa, summarize_motion
 
 
 EXAMPLE_PROJECT = (
@@ -64,7 +67,7 @@ class ProjectCompilationTests(unittest.TestCase):
 
         self.assertEqual(first["engine"], "ltx25_t2v")
         self.assertIn("dark bucket", first["prompt"].lower())
-        self.assertEqual(presenter["engine"], "ltx23_presenter")
+        self.assertEqual(presenter["engine"], "ltx25_presenter")
         self.assertIn("same fictional rural homesteader", presenter["prompt"].lower())
 
     def test_writes_valid_srt_from_shot_timing(self):
@@ -125,8 +128,156 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(prompt["340:331"]["inputs"]["value"], 5.25)
         self.assertNotIn("gavin", json.dumps(prompt).lower())
 
+    def test_ltx25_presenter_adapter_is_local_and_patches_exact_av_inputs(self):
+        _, prompt = build_adapter_prompt(
+            "ltx25_presenter",
+            {
+                "prompt": "The same test prompt for every local engine.",
+                "seed": 99,
+                "duration": 4.017,
+                "width": 1024,
+                "height": 576,
+                "image": "video_factory/test/master.png",
+                "audio": "video_factory/test/s0003.wav",
+                "output_prefix": "video_factory/test/ltx25-presenter",
+            },
+        )
+
+        self.assertEqual(prompt["269"]["inputs"]["image"], "video_factory/test/master.png")
+        self.assertEqual(prompt["346"]["inputs"]["audio"], "video_factory/test/s0003.wav")
+        self.assertEqual(prompt["405:362"]["inputs"]["value"], 4.017)
+        self.assertEqual(prompt["405:372"]["inputs"]["value"], 1024)
+        self.assertIn("LTXVAudioVAEEncode", {node["class_type"] for node in prompt.values()})
+        self.assertNotIn("LtxApi25AudioToVideo", {node["class_type"] for node in prompt.values()})
+
+    def test_longcat_benchmark_adapter_uses_local_model_nodes(self):
+        _, prompt = build_adapter_prompt(
+            "longcat_avatar_presenter",
+            {
+                "prompt": "The same test prompt for every local engine.",
+                "seed": 99,
+                "duration": 4.017,
+                "width": 832,
+                "height": 480,
+                "image": "video_factory/test/master.png",
+                "audio": "video_factory/test/s0003.wav",
+                "output_prefix": "video_factory/test/longcat",
+            },
+        )
+
+        classes = {node["class_type"] for node in prompt.values()}
+        self.assertIn("WanVideoLongCatAvatarExtendEmbeds", classes)
+        self.assertIn("MultiTalkWav2VecEmbeds", classes)
+        self.assertEqual(prompt["134"]["inputs"]["blocks_to_swap"], 35)
+        self.assertEqual(prompt["453"]["inputs"]["filename_prefix"], "video_factory/test/longcat")
+
     def test_stable_hash_ignores_dictionary_insertion_order(self):
         self.assertEqual(stable_hash({"a": 1, "b": 2}), stable_hash({"b": 2, "a": 1}))
+
+
+class PresenterQATests(unittest.TestCase):
+    @staticmethod
+    def _analysis(mean: float, p95: float) -> dict:
+        return {
+            "video_sha256": "abc123",
+            "motion": {
+                "mean_absolute_luma_delta": mean,
+                "p95_absolute_luma_delta": p95,
+            },
+            "metric_limitations": "Human review is still required.",
+        }
+
+    def test_motion_summary_uses_mean_and_true_p95(self):
+        summary = summarize_motion([1, 2, 3, 4, 10])
+
+        self.assertEqual(summary["frame_pairs"], 5)
+        self.assertEqual(summary["mean_absolute_luma_delta"], 4)
+        self.assertEqual(summary["p95_absolute_luma_delta"], 10)
+
+    def test_visible_motion_screen_rejects_nearly_frozen_mouth(self):
+        qa = evaluate_presenter_qa(
+            self._analysis(4.8, 7.9),
+            minimum_mean=5.0,
+            minimum_p95=9.0,
+            manual_review={criterion: "pass" for criterion in (
+                "visible_articulation",
+                "identity_stability",
+                "temporal_stability",
+            )},
+        )
+
+        self.assertEqual(qa["automatic_visible_motion_screen"]["status"], "fail")
+        self.assertEqual(qa["status"], "fail")
+
+    def test_automatic_motion_cannot_replace_manual_articulation_review(self):
+        pending = evaluate_presenter_qa(
+            self._analysis(8.5, 14.5),
+            minimum_mean=5.0,
+            minimum_p95=9.0,
+        )
+        passed = evaluate_presenter_qa(
+            self._analysis(8.5, 14.5),
+            minimum_mean=5.0,
+            minimum_p95=9.0,
+            manual_review={criterion: "pass" for criterion in (
+                "visible_articulation",
+                "identity_stability",
+                "temporal_stability",
+            )},
+        )
+
+        self.assertEqual(pending["status"], "pending")
+        self.assertEqual(passed["status"], "pass")
+
+    def test_manual_failure_overrides_passing_motion_screen(self):
+        qa = evaluate_presenter_qa(
+            self._analysis(8.5, 14.5),
+            minimum_mean=5.0,
+            minimum_p95=9.0,
+            manual_review={
+                "visible_articulation": "fail",
+                "identity_stability": "pass",
+                "temporal_stability": "pass",
+            },
+        )
+
+        self.assertEqual(qa["automatic_visible_motion_screen"]["status"], "pass")
+        self.assertEqual(qa["status"], "fail")
+
+    def test_assembly_gate_rejects_missing_pending_or_stale_presenter_qa(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            video = Path(temp_dir) / "shot.mp4"
+            video.write_bytes(b"presenter")
+            context = {
+                "project": {
+                    "presenter": {"qa": {"require_pass_before_assembly": True}}
+                }
+            }
+            manifest = {"shots": [{"shot_id": "s0001", "type": "presenter"}]}
+            state = {"assets": {"shot:s0001": {"status": "success", "output_path": str(video)}}}
+
+            self.assertEqual(
+                presenter_qa_failures(context, manifest, state),
+                ["s0001 (QA missing)"],
+            )
+            state["assets"]["shot:s0001"]["qa"] = {
+                "status": "pending",
+                "source_sha256": "stale",
+            }
+            self.assertEqual(
+                presenter_qa_failures(context, manifest, state),
+                ["s0001 (QA stale)"],
+            )
+            state["assets"]["shot:s0001"]["qa"] = {
+                "status": "pass",
+                "source_sha256": stable_hash("not-the-file-hash"),
+            }
+            self.assertEqual(
+                presenter_qa_failures(context, manifest, state),
+                ["s0001 (QA stale)"],
+            )
+            state["assets"]["shot:s0001"]["qa"]["source_sha256"] = sha256_file(video)
+            self.assertEqual(presenter_qa_failures(context, manifest, state), [])
 
 
 class NarrationConformanceTests(unittest.TestCase):
