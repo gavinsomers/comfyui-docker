@@ -32,6 +32,10 @@ presenter:
     shirt, suspenders, room, lighting, and camera distance. Locked-off camera,
     no cuts, no zoom, no hand gestures entering frame, no subtitles, no text,
     no logos, and no identity change.
+  qa:
+    sample_fps: 12
+    minimum_mouth_motion_mean: 5.0
+    minimum_mouth_motion_p95: 9.0
 voice:
   mode: custom_voice
   engine: qwen3_custom_voice
@@ -60,6 +64,6 @@ style:
     No text, subtitles, labels that can be read, logos, trademarks, watermarks,
     split screens, collages, surreal elements, malformed hands, or duplicate objects.
 engines:
-  presenter: ltx23_presenter
+  presenter: ltx25_presenter
   broll: ltx25_t2v
   still: z_image_turbo

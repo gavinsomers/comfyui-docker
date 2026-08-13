@@ -21,6 +21,7 @@ from video_factory.core import (  # noqa: E402
     compile_shot_manifest,
     extract_audio_segment,
     ffprobe_duration,
+    load_adapter,
     load_project,
     load_state,
     render_adapter,
@@ -32,6 +33,14 @@ from video_factory.core import (  # noqa: E402
     write_json_atomic,
     write_srt,
 )
+from video_factory.qa import (  # noqa: E402
+    MANUAL_CRITERIA,
+    analyze_presenter_video,
+    build_presenter_qa_policy,
+    evaluate_presenter_qa,
+    presenter_qa_policy_fingerprint,
+    write_contact_sheets,
+)
 
 
 def runtime_paths(context: dict[str, Any], basedir: Path) -> dict[str, Path]:
@@ -41,6 +50,8 @@ def runtime_paths(context: dict[str, Any], basedir: Path) -> dict[str, Path]:
         "manifest": root / "shot-manifest.json",
         "state": root / "state.json",
         "captions": root / "captions.srt",
+        "presenter_qa": root / "presenter-qa.json",
+        "presenter_qa_media": root / "qa" / "presenter",
         "clips": root / "assembly" / "clips",
         "delivery": root / f"{context['slug']}-1080p.mp4",
     }
@@ -380,6 +391,9 @@ def render_shots(
     video_dimensions = profile.get("generation", {}).get(
         "video_dimensions", {"width": 1280, "height": 736}
     )
+    presenter_dimensions = profile.get("generation", {}).get(
+        "presenter_dimensions", {"width": 1024, "height": 576}
+    )
     stage_root = Path("video_factory") / context["slug"]
 
     for shot in selected:
@@ -440,6 +454,11 @@ def render_shots(
                 "audio": audio_name,
                 "output_prefix": prefix,
             }
+            adapter, _ = load_adapter(shot["engine"])
+            if "width" in adapter["slots"]:
+                values["width"] = int(presenter_dimensions["width"])
+            if "height" in adapter["slots"]:
+                values["height"] = int(presenter_dimensions["height"])
 
         render_with_cache(
             state=state,
@@ -462,6 +481,38 @@ def sync_manifest_assets(manifest: dict[str, Any], state: dict[str, Any]) -> Non
         if record:
             shot["asset"] = record["output_path"]
             shot["status"] = record.get("status", "success")
+            if record.get("qa"):
+                shot["presenter_qa"] = record["qa"].get("status", "pending")
+
+
+def presenter_qa_failures(
+    context: dict[str, Any], manifest: dict[str, Any], state: dict[str, Any]
+) -> list[str]:
+    qa_config = context.get("project", {}).get("presenter", {}).get("qa", {})
+    policy = build_presenter_qa_policy(
+        sample_fps=int(qa_config.get("sample_fps", 12)),
+        minimum_mean=float(qa_config.get("minimum_mouth_motion_mean", 5.0)),
+        minimum_p95=float(qa_config.get("minimum_mouth_motion_p95", 9.0)),
+    )
+    expected_policy_fingerprint = presenter_qa_policy_fingerprint(policy)
+    failures = []
+    for shot in manifest["shots"]:
+        if shot.get("type") != "presenter":
+            continue
+        record = state_asset(state, f"shot:{shot['shot_id']}")
+        qa = record.get("qa") if record else None
+        if not qa:
+            failures.append(f"{shot['shot_id']} (QA missing)")
+            continue
+        output_path = Path(record["output_path"])
+        if (
+            qa.get("source_sha256") != sha256_file(output_path)
+            or qa.get("policy_fingerprint") != expected_policy_fingerprint
+        ):
+            failures.append(f"{shot['shot_id']} (QA stale)")
+        elif qa.get("status") != "pass":
+            failures.append(f"{shot['shot_id']} (QA {qa.get('status', 'unknown')})")
+    return failures
 
 
 def _delivery_settings(delivery: dict[str, Any]) -> tuple[str, str, float]:
@@ -562,6 +613,12 @@ def assemble_project(
     missing = [shot["shot_id"] for shot in manifest["shots"] if not shot.get("asset")]
     if missing:
         raise RuntimeError(f"Assembly is missing {len(missing)} shot assets: {', '.join(missing[:10])}")
+    qa_failures = presenter_qa_failures(context, manifest, state)
+    if qa_failures:
+        raise RuntimeError(
+            "Assembly requires passing presenter lip-sync QA: "
+            + ", ".join(qa_failures[:10])
+        )
 
     delivery = manifest["delivery"]
     width = int(delivery["width"])
@@ -742,6 +799,88 @@ def command_assemble(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_qa_presenter(args: argparse.Namespace) -> int:
+    context = load_project(args.project)
+    paths = runtime_paths(context, args.basedir)
+    if not paths["manifest"].exists():
+        raise FileNotFoundError(f"Compile the project first: {paths['manifest']}")
+    manifest = json.loads(paths["manifest"].read_text(encoding="utf-8"))
+    state = load_state(paths["state"])
+    selected = [shot for shot in manifest["shots"] if shot.get("type") == "presenter"]
+    if args.shot_id:
+        selected = [shot for shot in selected if shot["shot_id"] == args.shot_id]
+    if not selected:
+        raise ValueError("No matching rendered presenter shots")
+
+    supplied_manual = {
+        "visible_articulation": args.visible_articulation,
+        "identity_stability": args.identity_stability,
+        "temporal_stability": args.temporal_stability,
+    }
+    if any(supplied_manual.values()) and len(selected) != 1:
+        raise ValueError("Manual QA flags require --shot-id so one shot is reviewed at a time")
+
+    qa_config = context["project"]["presenter"].get("qa", {})
+    policy = build_presenter_qa_policy(
+        sample_fps=int(qa_config.get("sample_fps", 12)),
+        minimum_mean=float(qa_config.get("minimum_mouth_motion_mean", 5.0)),
+        minimum_p95=float(qa_config.get("minimum_mouth_motion_p95", 9.0)),
+    )
+    report = {"version": 1, "project": context["slug"], "shots": {}}
+    for shot in selected:
+        key = f"shot:{shot['shot_id']}"
+        record = state_asset(state, key)
+        if not record:
+            raise FileNotFoundError(f"Presenter shot is not rendered: {shot['shot_id']}")
+        video = Path(record["output_path"])
+        analysis = analyze_presenter_video(
+            video,
+            roi=policy["mouth_roi"],
+            sample_fps=policy["sample_fps"],
+        )
+        existing_qa = record.get("qa", {})
+        existing_review = (
+            existing_qa.get("manual_review", {}).get("criteria", {})
+            if existing_qa.get("source_sha256") == analysis["video_sha256"]
+            else {}
+        )
+        manual_review = {
+            criterion: supplied_manual.get(criterion) or existing_review.get(criterion)
+            for criterion in MANUAL_CRITERIA
+        }
+        existing_notes = existing_qa.get("manual_review", {}).get("notes", "")
+        qa = evaluate_presenter_qa(
+            analysis,
+            minimum_mean=policy["minimum_mouth_motion_mean"],
+            minimum_p95=policy["minimum_mouth_motion_p95"],
+            manual_review=manual_review,
+            notes=args.notes if args.notes is not None else existing_notes,
+        )
+        qa["contact_sheets"] = write_contact_sheets(
+            video,
+            paths["presenter_qa_media"] / shot["shot_id"],
+        )
+        record["qa"] = qa
+        report["shots"][shot["shot_id"]] = qa
+        motion = qa["analysis"]["motion"]
+        print(
+            f"{shot['shot_id']}: {qa['status']} "
+            f"(mouth mean={motion['mean_absolute_luma_delta']:.2f}, "
+            f"p95={motion['p95_absolute_luma_delta']:.2f})"
+        )
+
+    save_state(paths["state"], state)
+    write_json_atomic(paths["presenter_qa"], report)
+    sync_manifest_assets(manifest, state)
+    write_json_atomic(paths["manifest"], manifest)
+    print(f"Presenter QA: {paths['presenter_qa']}")
+    if args.require_pass and any(
+        qa["status"] != "pass" for qa in report["shots"].values()
+    ):
+        return 2
+    return 0
+
+
 def command_status(args: argparse.Namespace) -> int:
     context = load_project(args.project)
     paths = runtime_paths(context, args.basedir)
@@ -805,6 +944,18 @@ def build_parser() -> argparse.ArgumentParser:
     assemble.add_argument("project")
     assemble.add_argument("--overwrite", action="store_true")
     assemble.set_defaults(func=command_assemble)
+
+    qa_presenter = subparsers.add_parser(
+        "qa-presenter", help="Screen presenter mouth motion and record human review"
+    )
+    qa_presenter.add_argument("project")
+    qa_presenter.add_argument("--shot-id")
+    qa_presenter.add_argument("--visible-articulation", choices=["pass", "fail"])
+    qa_presenter.add_argument("--identity-stability", choices=["pass", "fail"])
+    qa_presenter.add_argument("--temporal-stability", choices=["pass", "fail"])
+    qa_presenter.add_argument("--notes")
+    qa_presenter.add_argument("--require-pass", action="store_true")
+    qa_presenter.set_defaults(func=command_qa_presenter)
 
     status = subparsers.add_parser("status", help="Show resumable project state")
     status.add_argument("project")

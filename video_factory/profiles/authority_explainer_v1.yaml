@@ -22,6 +22,9 @@ generation:
   still_dimensions:
     width: 1344
     height: 768
+  presenter_dimensions:
+    width: 1024
+    height: 576
   video_dimensions:
     width: 1280
     height: 736

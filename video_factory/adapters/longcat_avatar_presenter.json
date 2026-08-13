@@ -1,0 +1,21 @@
+{
+  "name": "longcat_avatar_presenter",
+  "description": "Experimental local four-second LongCat Avatar presenter benchmark.",
+  "template": "api_templates/longcat_avatar_presenter.json",
+  "required_slots": ["prompt", "seed", "duration", "width", "height", "image", "audio", "output_prefix"],
+  "slots": {
+    "prompt": {"node": "241", "input": "positive_prompt"},
+    "seed": {"node": "324", "input": "seed"},
+    "duration": {"node": "317", "input": "duration"},
+    "width": {"node": "245", "input": "value"},
+    "height": {"node": "246", "input": "value"},
+    "image": {"node": "284", "input": "image"},
+    "audio": {"node": "125", "input": "audio"},
+    "output_prefix": {"node": "453", "input": "filename_prefix"}
+  },
+  "output_node": "453",
+  "limitations": [
+    "The template renders one fixed 65-frame window at 16 fps.",
+    "The RTX 5090 proof uses 768x432 and 35 swapped blocks with 25,235 MiB peak observed total GPU memory; 1024x576 exhausted 32 GB VRAM."
+  ]
+}

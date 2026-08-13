@@ -48,7 +48,16 @@
         "image_engine": {"type": "string"},
         "image_prompt": {"type": "string"},
         "animation_prompt": {"type": "string", "minLength": 1},
-        "seed": {"type": "integer", "minimum": 0}
+        "seed": {"type": "integer", "minimum": 0},
+        "qa": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sample_fps": {"type": "integer", "minimum": 1, "maximum": 60},
+            "minimum_mouth_motion_mean": {"type": "number", "minimum": 0},
+            "minimum_mouth_motion_p95": {"type": "number", "minimum": 0}
+          }
+        }
       },
       "allOf": [
         {
