@@ -164,22 +164,30 @@ VRAM; 768x432 with 35 swapped transformer blocks completed in 264 seconds with
 custom-node provider sources are verified by
 `spider/userscripts_dir/08-install-presenter-benchmark-deps.sh`; the benchmark
 also checks ComfyUI's `/object_info` registry before submitting a LongCat graph.
-The setup script fails with the missing classes and provider revision instead of
-modifying the ignored runtime custom-node tree.
+The setup script requires each provider to have the expected GitHub origin,
+exact immutable commit, clean checkout, and complete node-class set. It reports
+the mismatch and exact installation commands without modifying the ignored
+runtime custom-node tree.
 
-Install the four providers under `spider/custom_nodes/` when the preflight names
-them, then restart ComfyUI:
+The pins below are the commits matching the four provider versions used by the
+proven local benchmark. Install them under `spider/custom_nodes/`, then restart
+ComfyUI:
 
 ```bash
-git clone --branch longcat_avatar https://github.com/kijai/ComfyUI-WanVideoWrapper.git spider/custom_nodes/ComfyUI-WanVideoWrapper
-git clone https://github.com/kijai/ComfyUI-KJNodes.git spider/custom_nodes/ComfyUI-KJNodes
-git clone https://github.com/kijai/ComfyUI-MelBandRoFormer.git spider/custom_nodes/ComfyUI-MelBandRoFormer
-git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git spider/custom_nodes/ComfyUI-VideoHelperSuite
+git clone --no-checkout https://github.com/kijai/ComfyUI-WanVideoWrapper.git spider/custom_nodes/ComfyUI-WanVideoWrapper
+git -C spider/custom_nodes/ComfyUI-WanVideoWrapper checkout --detach e091c4a77425d6a4a7f90ab30c513d24f8cb91cf
+git clone --no-checkout https://github.com/kijai/ComfyUI-KJNodes.git spider/custom_nodes/comfyui-kjnodes
+git -C spider/custom_nodes/comfyui-kjnodes checkout --detach f710f2635dbadbaf1ccf7d25572daa7dfec80bfd
+git clone --no-checkout https://github.com/kijai/ComfyUI-MelBandRoFormer.git spider/custom_nodes/ComfyUI-MelBandRoFormer
+git -C spider/custom_nodes/ComfyUI-MelBandRoFormer checkout --detach 92c86854e6654f4aacc97484471af95c98ea16d4
+git clone --no-checkout https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git spider/custom_nodes/comfyui-videohelpersuite
+git -C spider/custom_nodes/comfyui-videohelpersuite checkout --detach 3234937ff5f3ca19068aaba5042771514de2429d
 ```
 
-The WanVideoWrapper provider must expose the `longcat_avatar` revision. Existing
-provider directories should be updated in place to the revisions reported by
-the preflight rather than cloned over.
+Registry-installed providers do not retain Git metadata and therefore fail this
+strict reproducibility check. Move an existing provider directory aside before
+cloning its pinned checkout; do not clone over an existing directory or discard
+local changes.
 
 Runtime output is written to:
 

@@ -24,6 +24,8 @@ from scripts.presenter_benchmark import ENGINE_SETTINGS, preflight_longcat_nodes
 from spider.userscripts_dir.presenter_benchmark_deps import (
     CORE_NODE_CLASSES,
     CUSTOM_NODE_PROVIDERS,
+    custom_node_provider_failures,
+    format_custom_node_provider_failures,
     format_missing_custom_nodes,
     missing_custom_node_sources,
     missing_registered_nodes,
@@ -434,17 +436,21 @@ class PresenterBenchmarkDependencyTests(unittest.TestCase):
         }
 
         self.assertEqual(workflow_classes - set(CORE_NODE_CLASSES), mapped_classes)
+        for provider in CUSTOM_NODE_PROVIDERS.values():
+            self.assertRegex(provider["commit"], r"^[0-9a-f]{40}$")
+            self.assertNotIn("revision", provider)
 
     def test_custom_node_source_preflight_reports_absent_providers(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            missing = missing_custom_node_sources(root)
+            missing = custom_node_provider_failures(root)
 
         self.assertEqual(set(missing), set(CUSTOM_NODE_PROVIDERS))
-        guidance = format_missing_custom_nodes(missing, root)
+        guidance = format_custom_node_provider_failures(missing, root)
         self.assertIn("ComfyUI-WanVideoWrapper", guidance)
-        self.assertIn("longcat_avatar", guidance)
+        self.assertIn("e091c4a77425d6a4a7f90ab30c513d24f8cb91cf", guidance)
         self.assertIn(str(root / "ComfyUI-WanVideoWrapper"), guidance)
+        self.assertIn("checkout --detach", guidance)
 
     def test_startup_preflight_fails_before_pip_when_providers_are_absent(self):
         script = (
@@ -478,13 +484,60 @@ class PresenterBenchmarkDependencyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             for provider_name, provider in CUSTOM_NODE_PROVIDERS.items():
-                provider_dir = root / provider_name
+                provider_dir = root / provider["directory"]
                 provider_dir.mkdir()
                 (provider_dir / "nodes.py").write_text(
                     "\n".join(provider["classes"]), encoding="utf-8"
                 )
 
-            self.assertEqual(missing_custom_node_sources(root), {})
+            def git_output(provider_dir, *args):
+                provider = next(
+                    item
+                    for item in CUSTOM_NODE_PROVIDERS.values()
+                    if item["directory"] == provider_dir.name
+                )
+                if args == ("config", "--get", "remote.origin.url"):
+                    return True, provider["repository"].removesuffix(".git")
+                if args == ("rev-parse", "HEAD"):
+                    return True, provider["commit"]
+                return True, ""
+
+            with patch(
+                "spider.userscripts_dir.presenter_benchmark_deps._git_output",
+                side_effect=git_output,
+            ):
+                self.assertEqual(custom_node_provider_failures(root), {})
+
+    def test_custom_node_preflight_rejects_wrong_git_identity_and_state(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            for provider in CUSTOM_NODE_PROVIDERS.values():
+                provider_dir = root / provider["directory"]
+                provider_dir.mkdir()
+                (provider_dir / "nodes.py").write_text(
+                    "\n".join(provider["classes"]), encoding="utf-8"
+                )
+
+            outputs = {
+                "config": (True, "https://github.com/example/wrong-provider.git"),
+                "rev-parse": (True, "0" * 40),
+                "status": (True, "?? local-node.py"),
+            }
+            with patch(
+                "spider.userscripts_dir.presenter_benchmark_deps._git_output",
+                side_effect=lambda _provider_dir, *args: outputs[args[0]],
+            ):
+                failures = custom_node_provider_failures(root)
+
+        for provider_failures in failures.values():
+            self.assertIn(
+                "origin is https://github.com/example/wrong-provider.git",
+                provider_failures,
+            )
+            self.assertIn("HEAD is " + "0" * 40, provider_failures)
+            self.assertIn(
+                "checkout has local or untracked changes", provider_failures
+            )
 
     def test_registered_node_preflight_groups_missing_classes_by_provider(self):
         available = set(CORE_NODE_CLASSES)
@@ -507,7 +560,7 @@ class PresenterBenchmarkDependencyTests(unittest.TestCase):
         with patch("scripts.presenter_benchmark.request_json", return_value=available):
             with self.assertRaisesRegex(
                 RuntimeError,
-                "longcat_avatar.*WanVideoLongCatAvatarExtendEmbeds",
+                "ComfyUI-WanVideoWrapper.*WanVideoLongCatAvatarExtendEmbeds",
             ):
                 preflight_longcat_nodes("http://127.0.0.1:8188")
 
