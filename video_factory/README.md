@@ -169,6 +169,13 @@ exact immutable commit, clean checkout, and complete node-class set. It reports
 the mismatch and exact installation commands without modifying the ignored
 runtime custom-node tree.
 
+The same preflight derives its bounded Python install list and import checks
+from the pinned providers' direct dependency contract in
+`presenter_benchmark_deps.py`. The two providers that declare desktop OpenCV
+and KJNodes' headless declaration resolve to the proven headless distribution,
+which supplies their shared `cv2` module without installing conflicting OpenCV
+wheels.
+
 The pins below are the commits matching the four provider versions used by the
 proven local benchmark. Install them under `spider/custom_nodes/`, then restart
 ComfyUI:

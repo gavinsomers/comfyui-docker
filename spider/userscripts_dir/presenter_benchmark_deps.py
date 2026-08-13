@@ -11,38 +11,50 @@ from pathlib import Path
 from typing import Iterable, Sequence
 
 
-REQUIREMENTS = (
-    "packaging",
-    "ftfy",
-    "diffusers>=0.33.0",
-    "peft>=0.17.0",
-    "pyloudnorm",
-    "gguf>=0.17.1",
-    "opencv-python-headless",
-    "rotary_embedding_torch",
-    "imageio-ffmpeg",
-    "color-matcher",
-    "matplotlib",
-    "mss",
-)
-IMPORTS = (
-    "cv2",
-    "diffusers",
-    "ftfy",
-    "gguf",
-    "imageio_ffmpeg",
-    "matplotlib",
-    "mss",
-    "peft",
-    "pyloudnorm",
-    "rotary_embedding_torch",
-)
+DEPENDENCY_CONTRACT = {
+    "accelerate": ("accelerate>=1.2.1,<2", "accelerate"),
+    "color-matcher": ("color-matcher>=0.6.0,<1", "color_matcher"),
+    "diffusers": ("diffusers>=0.33.0,<1", "diffusers"),
+    "einops": ("einops>=0.8.2,<1", "einops"),
+    "ftfy": ("ftfy>=6.3.1,<7", "ftfy"),
+    "gguf": ("gguf>=0.17.1,<1", "gguf"),
+    "huggingface_hub": ("huggingface_hub>=0.36.2,<1", "huggingface_hub"),
+    "imageio-ffmpeg": ("imageio-ffmpeg>=0.6.0,<1", "imageio_ffmpeg"),
+    "matplotlib": ("matplotlib>=3.11.1,<4", "matplotlib"),
+    "mss": ("mss>=10.2.0,<11", "mss"),
+    "numpy": ("numpy>=2.4.4,<3", "numpy"),
+    "opencv": ("opencv-python-headless>=5.0.0.93,<6", "cv2"),
+    "packaging": ("packaging>=26.3,<27", "packaging"),
+    "peft": ("peft>=0.17.0,<1", "peft"),
+    "pillow": ("Pillow>=10.3.0,<13", "PIL"),
+    "protobuf": ("protobuf>=7.35.1,<8", "google.protobuf"),
+    "pyloudnorm": ("pyloudnorm>=0.2.0,<1", "pyloudnorm"),
+    "rotary_embedding_torch": (
+        "rotary_embedding_torch>=0.9.1,<1",
+        "rotary_embedding_torch",
+    ),
+    "scipy": ("scipy>=1.18.0,<2", "scipy"),
+    "sentencepiece": ("sentencepiece>=0.2.0,<1", "sentencepiece"),
+}
 CORE_NODE_CLASSES = ("LoadAudio", "LoadImage", "TrimAudioDuration")
 CUSTOM_NODE_PROVIDERS = {
     "ComfyUI-WanVideoWrapper": {
         "directory": "ComfyUI-WanVideoWrapper",
         "repository": "https://github.com/kijai/ComfyUI-WanVideoWrapper.git",
         "commit": "e091c4a77425d6a4a7f90ab30c513d24f8cb91cf",
+        "dependencies": (
+            "accelerate",
+            "diffusers",
+            "einops",
+            "ftfy",
+            "gguf",
+            "opencv",
+            "peft",
+            "protobuf",
+            "pyloudnorm",
+            "scipy",
+            "sentencepiece",
+        ),
         "classes": (
             "DownloadAndLoadWav2VecModel",
             "MultiTalkWav2VecEmbeds",
@@ -62,21 +74,45 @@ CUSTOM_NODE_PROVIDERS = {
         "directory": "comfyui-kjnodes",
         "repository": "https://github.com/kijai/ComfyUI-KJNodes.git",
         "commit": "f710f2635dbadbaf1ccf7d25572daa7dfec80bfd",
+        "dependencies": (
+            "color-matcher",
+            "huggingface_hub",
+            "matplotlib",
+            "mss",
+            "numpy",
+            "opencv",
+            "pillow",
+            "scipy",
+        ),
         "classes": ("FloatConstant", "ImageResizeKJv2", "INTConstant"),
     },
     "ComfyUI-MelBandRoFormer": {
         "directory": "ComfyUI-MelBandRoFormer",
         "repository": "https://github.com/kijai/ComfyUI-MelBandRoFormer.git",
         "commit": "92c86854e6654f4aacc97484471af95c98ea16d4",
+        "dependencies": ("einops", "rotary_embedding_torch"),
         "classes": ("MelBandRoFormerModelLoader", "MelBandRoFormerSampler"),
     },
     "ComfyUI-VideoHelperSuite": {
         "directory": "comfyui-videohelpersuite",
         "repository": "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git",
         "commit": "3234937ff5f3ca19068aaba5042771514de2429d",
+        "dependencies": ("imageio-ffmpeg", "opencv"),
         "classes": ("VHS_VideoCombine",),
     },
 }
+
+
+def _dependency_keys() -> tuple[str, ...]:
+    keys = ["packaging"]
+    for provider in CUSTOM_NODE_PROVIDERS.values():
+        keys.extend(provider["dependencies"])
+    return tuple(dict.fromkeys(keys))
+
+
+DEPENDENCY_KEYS = _dependency_keys()
+REQUIREMENTS = tuple(DEPENDENCY_CONTRACT[key][0] for key in DEPENDENCY_KEYS)
+IMPORTS = tuple(DEPENDENCY_CONTRACT[key][1] for key in DEPENDENCY_KEYS)
 
 
 def requirements_satisfied(

@@ -24,6 +24,9 @@ from scripts.presenter_benchmark import ENGINE_SETTINGS, preflight_longcat_nodes
 from spider.userscripts_dir.presenter_benchmark_deps import (
     CORE_NODE_CLASSES,
     CUSTOM_NODE_PROVIDERS,
+    DEPENDENCY_CONTRACT,
+    IMPORTS,
+    REQUIREMENTS,
     custom_node_provider_failures,
     format_custom_node_provider_failures,
     format_missing_custom_nodes,
@@ -413,6 +416,57 @@ class PresenterQATests(unittest.TestCase):
 
 
 class PresenterBenchmarkDependencyTests(unittest.TestCase):
+    def test_dependency_contract_covers_pinned_provider_manifests(self):
+        expected = {
+            "ComfyUI-WanVideoWrapper": {
+                "accelerate",
+                "diffusers",
+                "einops",
+                "ftfy",
+                "gguf",
+                "opencv",
+                "peft",
+                "protobuf",
+                "pyloudnorm",
+                "scipy",
+                "sentencepiece",
+            },
+            "ComfyUI-KJNodes": {
+                "color-matcher",
+                "huggingface_hub",
+                "matplotlib",
+                "mss",
+                "numpy",
+                "opencv",
+                "pillow",
+                "scipy",
+            },
+            "ComfyUI-MelBandRoFormer": {"einops", "rotary_embedding_torch"},
+            "ComfyUI-VideoHelperSuite": {"imageio-ffmpeg", "opencv"},
+        }
+
+        for provider_name, dependencies in expected.items():
+            self.assertEqual(
+                set(CUSTOM_NODE_PROVIDERS[provider_name]["dependencies"]),
+                dependencies,
+            )
+        self.assertEqual(
+            set(DEPENDENCY_CONTRACT),
+            {"packaging"}.union(*expected.values()),
+        )
+
+    def test_install_and_import_checks_derive_from_dependency_contract(self):
+        self.assertEqual(
+            set(REQUIREMENTS),
+            {requirement for requirement, _module in DEPENDENCY_CONTRACT.values()},
+        )
+        self.assertEqual(
+            set(IMPORTS),
+            {module for _requirement, module in DEPENDENCY_CONTRACT.values()},
+        )
+        for requirement in REQUIREMENTS:
+            self.assertRegex(requirement, r"[<=>]")
+
     def test_dependency_preflight_rejects_missing_or_outdated_distributions(self):
         self.assertTrue(requirements_satisfied(("pip>=0",), ("json",)))
         self.assertFalse(requirements_satisfied(("pip>=9999",), ("json",)))
