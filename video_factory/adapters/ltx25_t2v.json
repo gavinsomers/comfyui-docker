@@ -1,0 +1,15 @@
+{
+  "name": "ltx25_t2v",
+  "description": "LTX 2.5 distilled text-to-video B-roll generation.",
+  "template": "api_templates/ltx25_t2v.json",
+  "required_slots": ["prompt", "seed", "duration", "width", "height", "output_prefix"],
+  "slots": {
+    "prompt": {"node": "405:376", "input": "value"},
+    "seed": {"node": "405:339", "input": "noise_seed"},
+    "duration": {"node": "405:362", "input": "value"},
+    "width": {"node": "405:372", "input": "value"},
+    "height": {"node": "405:360", "input": "value"},
+    "output_prefix": {"node": "75", "input": "filename_prefix"}
+  },
+  "output_node": "75"
+}

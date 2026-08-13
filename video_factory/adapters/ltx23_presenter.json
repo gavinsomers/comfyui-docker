@@ -1,0 +1,15 @@
+{
+  "name": "ltx23_presenter",
+  "description": "LTX 2.3 image-and-audio conditioned talking presenter.",
+  "template": "api_templates/ltx23_presenter.json",
+  "required_slots": ["prompt", "seed", "duration", "image", "audio", "output_prefix"],
+  "slots": {
+    "prompt": {"node": "340:319", "input": "value"},
+    "seed": {"node": "340:286", "input": "noise_seed"},
+    "duration": {"node": "340:331", "input": "value"},
+    "image": {"node": "269", "input": "image"},
+    "audio": {"node": "346", "input": "audio"},
+    "output_prefix": {"node": "341", "input": "filename_prefix"}
+  },
+  "output_node": "341"
+}

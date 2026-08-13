@@ -1,0 +1,32 @@
+{
+  "1": {
+    "class_type": "Qwen3Loader",
+    "inputs": {
+      "repo_id": "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice",
+      "source": "HuggingFace",
+      "precision": "bf16",
+      "attention": "sdpa",
+      "local_model_path": ""
+    }
+  },
+  "2": {
+    "class_type": "Qwen3CustomVoice",
+    "inputs": {
+      "model": ["1", 0],
+      "text": "Replace this narration through the adapter.",
+      "language": "English",
+      "speaker": "Ryan",
+      "seed": 1000,
+      "instruct": "Calm, practical and conversational delivery.",
+      "custom_speaker_name": "",
+      "max_new_tokens": 8192
+    }
+  },
+  "3": {
+    "class_type": "SaveAudio",
+    "inputs": {
+      "audio": ["2", 0],
+      "filename_prefix": "video_factory/narration"
+    }
+  }
+}

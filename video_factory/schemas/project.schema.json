@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "project.schema.json",
+  "title": "Video factory project",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "project",
+    "profile",
+    "subject",
+    "presenter",
+    "voice",
+    "content",
+    "engines"
+  ],
+  "properties": {
+    "version": {"const": 1},
+    "seed": {"type": "integer", "minimum": 0},
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slug", "title"],
+      "properties": {
+        "slug": {"type": "string", "minLength": 1},
+        "title": {"type": "string", "minLength": 1}
+      }
+    },
+    "profile": {"type": "string", "minLength": 1},
+    "subject": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["topic", "product", "environment"],
+      "properties": {
+        "topic": {"type": "string", "minLength": 1},
+        "product": {"type": "string", "minLength": 1},
+        "environment": {"type": "string", "minLength": 1},
+        "audience": {"type": "string"}
+      }
+    },
+    "presenter": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["mode", "animation_prompt"],
+      "properties": {
+        "mode": {"enum": ["generated", "supplied"]},
+        "image": {"type": "string"},
+        "image_engine": {"type": "string"},
+        "image_prompt": {"type": "string"},
+        "animation_prompt": {"type": "string", "minLength": 1},
+        "seed": {"type": "integer", "minimum": 0}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"mode": {"const": "generated"}}},
+          "then": {"required": ["image_prompt"]}
+        },
+        {
+          "if": {"properties": {"mode": {"const": "supplied"}}},
+          "then": {"required": ["image"]}
+        }
+      ]
+    },
+    "voice": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["mode", "engine"],
+      "properties": {
+        "mode": {"enum": ["custom_voice", "voice_clone", "supplied"]},
+        "engine": {"type": "string", "minLength": 1},
+        "audio": {"type": "string"},
+        "speaker": {"type": "string"},
+        "instruct": {"type": "string"},
+        "language": {"type": "string"},
+        "seed": {"type": "integer", "minimum": 0},
+        "target_words_per_minute": {"type": "number", "minimum": 60, "maximum": 240},
+        "max_new_tokens": {"type": "integer", "minimum": 64}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"mode": {"const": "supplied"}}},
+          "then": {"required": ["audio"]}
+        }
+      ]
+    },
+    "content": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["script_file"],
+      "properties": {
+        "script_file": {"type": "string", "minLength": 1},
+        "storyboard_file": {"type": "string", "minLength": 1}
+      }
+    },
+    "style": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "global": {"type": "string"},
+        "broll": {"type": "string"},
+        "still": {"type": "string"},
+        "constraints": {"type": "string"}
+      }
+    },
+    "engines": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["presenter", "broll", "still"],
+      "properties": {
+        "presenter": {"type": "string", "minLength": 1},
+        "broll": {"type": "string", "minLength": 1},
+        "still": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

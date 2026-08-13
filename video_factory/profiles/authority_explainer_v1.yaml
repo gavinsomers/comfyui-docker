@@ -1,0 +1,27 @@
+name: authority_explainer_v1
+description: >-
+  Fast-cut authority-led explainer format derived from the reference video:
+  continuous narration, recurring short presenter inserts, illustrative B-roll,
+  animated stills, hard cuts, and no required music.
+words_per_minute: 163
+average_shot_seconds: 4.0
+visual_mix:
+  presenter: 0.24
+  broll: 0.40
+  still: 0.36
+transitions: hard_cuts
+music: false
+delivery:
+  width: 1920
+  height: 1080
+  fps: 24
+  video_codec: h264
+  pixel_format: yuv420p
+  audio_lufs: -16
+generation:
+  still_dimensions:
+    width: 1344
+    height: 768
+  video_dimensions:
+    width: 1280
+    height: 736
