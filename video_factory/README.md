@@ -61,6 +61,13 @@ The example is approximately 88 seconds at the profile's target speaking rate.
 Its 20-shot plan uses the same approximate visual ratio as the reference format:
 25% presenter, 40% generated B-roll, and 35% animated stills.
 
+## Local pilot proof
+
+The mosquito-control pilot was rendered and assembled locally on an NVIDIA
+GeForce RTX 5090. The tracked [pilot render proof](pilot-render-proof.json)
+records the render environment, shot mix, probed delivery properties, byte size,
+and SHA-256 checksum without committing generated media.
+
 ## Commands
 
 Run from the repository root:
@@ -127,8 +134,10 @@ Supported input modes:
 - `voice.mode: supplied` uses an existing audio file.
 
 Cache keys include the fully patched workflow prompt and staged input hashes.
-Changing a voice invalidates narration and presenter-dependent work without
-forcing unrelated stills or B-roll to be regenerated.
+Normalized assembly clips additionally track the source asset hash, shot
+duration, and delivery settings. Changing a voice invalidates narration and
+presenter-dependent work without forcing unrelated stills or B-roll to be
+regenerated.
 
 ## Boundaries
 

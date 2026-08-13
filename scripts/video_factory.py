@@ -233,8 +233,14 @@ def render_narration(
         timeout_seconds=args.timeout_seconds,
     )
     target_wpm = voice.get("target_words_per_minute")
-    if not target_wpm or args.dry_run:
+    if args.dry_run:
         return raw
+    if not target_wpm:
+        record = {**raw, "kind": "narration"}
+        state.setdefault("assets", {})["narration"] = record
+        save_state(paths["state"], state)
+        print(f"narration: active raw audio -> {record['output_path']}")
+        return record
 
     source = Path(raw["output_path"])
     conformed = paths["root"] / "narration" / "conformed.wav"
@@ -458,6 +464,30 @@ def sync_manifest_assets(manifest: dict[str, Any], state: dict[str, Any]) -> Non
             shot["status"] = record.get("status", "success")
 
 
+def _delivery_settings(delivery: dict[str, Any]) -> tuple[str, str, float]:
+    codec_name = str(delivery.get("video_codec") or "h264").strip()
+    video_codec = {
+        "avc": "libx264",
+        "h264": "libx264",
+        "h265": "libx265",
+        "hevc": "libx265",
+    }.get(codec_name.lower(), codec_name)
+    pixel_format = str(delivery.get("pixel_format") or "yuv420p").strip()
+    configured_audio_lufs = delivery.get("audio_lufs")
+    audio_lufs = float(-16 if configured_audio_lufs is None else configured_audio_lufs)
+    if not math.isfinite(audio_lufs):
+        raise ValueError("delivery.audio_lufs must be finite")
+    return video_codec, pixel_format, audio_lufs
+
+
+def _video_encoding_args(video_codec: str, pixel_format: str) -> list[str]:
+    args = ["-c:v", video_codec]
+    if video_codec in {"libx264", "libx265"}:
+        args.extend(["-preset", "medium", "-crf", "18"])
+    args.extend(["-pix_fmt", pixel_format])
+    return args
+
+
 def create_assembly_clip(
     asset: Path,
     target: Path,
@@ -465,12 +495,14 @@ def create_assembly_clip(
     width: int,
     height: int,
     fps: int,
+    video_codec: str = "libx264",
+    pixel_format: str = "yuv420p",
 ) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     common_filter = (
         f"scale={width}:{height}:force_original_aspect_ratio=increase,"
         f"crop={width}:{height},fps={fps},"
-        f"tpad=stop_mode=clone:stop_duration={duration:.3f},format=yuv420p"
+        f"tpad=stop_mode=clone:stop_duration={duration:.3f},format={pixel_format}"
     )
     if asset.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".bmp"}:
         frames = max(1, math.ceil(duration * fps))
@@ -479,7 +511,7 @@ def create_assembly_clip(
             f"crop={width * 2}:{height * 2},"
             f"zoompan=z='min(zoom+0.00035,1.05)':"
             f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-            f"d={frames}:s={width}x{height}:fps={fps},format=yuv420p"
+            f"d={frames}:s={width}x{height}:fps={fps},format={pixel_format}"
         )
         command = [
             "ffmpeg",
@@ -511,21 +543,8 @@ def create_assembly_clip(
             "-vf",
             common_filter,
         ]
-    command.extend(
-        [
-            "-c:v",
-            "libx264",
-            "-preset",
-            "medium",
-            "-crf",
-            "18",
-            "-pix_fmt",
-            "yuv420p",
-            "-movflags",
-            "+faststart",
-            str(target),
-        ]
-    )
+    command.extend(_video_encoding_args(video_codec, pixel_format))
+    command.extend(["-movflags", "+faststart", str(target)])
     subprocess.run(command, check=True)
 
 
@@ -548,19 +567,51 @@ def assemble_project(
     width = int(delivery["width"])
     height = int(delivery["height"])
     fps = int(delivery["fps"])
+    video_codec, pixel_format, audio_lufs = _delivery_settings(delivery)
     paths["clips"].mkdir(parents=True, exist_ok=True)
     clips = []
     for shot in manifest["shots"]:
         clip = paths["clips"] / f"{shot['index']:04d}-{shot['shot_id']}.mp4"
-        if overwrite or not clip.exists():
+        asset = Path(shot["asset"])
+        cache_record_path = clip.with_suffix(".cache.json")
+        cache_key = stable_hash(
+            {
+                "source_sha256": sha256_file(asset),
+                "duration": float(shot["duration"]),
+                "width": width,
+                "height": height,
+                "fps": fps,
+                "video_codec": video_codec,
+                "pixel_format": pixel_format,
+                "audio_lufs": audio_lufs,
+            }
+        )
+        cache_record = None
+        if cache_record_path.exists():
+            try:
+                cache_record = json.loads(cache_record_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                cache_record = None
+        if (
+            overwrite
+            or not clip.exists()
+            or not cache_record
+            or cache_record.get("cache_key") != cache_key
+        ):
             print(f"assembly: preparing {shot['shot_id']}")
             create_assembly_clip(
-                Path(shot["asset"]),
+                asset,
                 clip,
                 float(shot["duration"]),
                 width,
                 height,
                 fps,
+                video_codec,
+                pixel_format,
+            )
+            write_json_atomic(
+                cache_record_path,
+                {"version": 1, "cache_key": cache_key},
             )
         clips.append(clip)
 
@@ -604,10 +655,9 @@ def assemble_project(
             "0:v:0",
             "-map",
             "1:a:0",
-            "-c:v",
-            "copy",
+            *_video_encoding_args(video_codec, pixel_format),
             "-af",
-            "loudnorm=I=-16:TP=-1.5:LRA=11",
+            f"loudnorm=I={audio_lufs:g}:TP=-1.5:LRA=11",
             "-c:a",
             "aac",
             "-b:a",
