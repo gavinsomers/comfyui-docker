@@ -82,9 +82,7 @@ benchmark using the same image, audio, prompt, seed, and exact 16:9 centre crop
 then compared LTX 2.3, fully local LTX 2.5, and LongCat Avatar. The tracked
 [presenter benchmark proof](presenter-benchmark-proof.json) records render time,
 peak observed VRAM, objective lower-face motion diagnostics, and human visual
-review. LTX 2.5 won because it produced clear varied mouth shapes at 1024x576 in
-48 seconds. LongCat also articulated but took 264 seconds at 768x432 and was
-more exaggerated; LTX 2.3 remained a failed baseline.
+review, and owns the detailed engine comparison and selection rationale.
 
 ## Commands
 
@@ -158,10 +156,9 @@ python3 scripts/presenter_benchmark.py \
 ```
 
 The bundled LongCat graph is intentionally a one-window experimental adapter
-for approximately four-second proofs. On the RTX 5090, 1024x576 exhausted 32 GB
-VRAM; 768x432 with 35 swapped transformer blocks completed in 264 seconds with
-25,235 MiB peak observed total GPU memory. Its optional Python dependencies and
-custom-node provider sources are verified by
+for approximately four-second proofs. The presenter benchmark proof owns its
+tested resolution, performance, and memory constraints. Its optional Python
+dependencies and custom-node provider sources are verified by
 `spider/userscripts_dir/08-install-presenter-benchmark-deps.sh`; the benchmark
 also checks ComfyUI's `/object_info` registry before submitting a LongCat graph.
 The setup script requires each provider to have the expected GitHub origin,
@@ -170,31 +167,25 @@ the mismatch and exact installation commands without modifying the ignored
 runtime custom-node tree.
 
 The same preflight derives its bounded Python install list and import checks
-from the pinned providers' direct dependency contract in
-`presenter_benchmark_deps.py`. The two providers that declare desktop OpenCV
-and KJNodes' headless declaration resolve to the proven headless distribution,
-which supplies their shared `cv2` module without installing conflicting OpenCV
-wheels.
+from the pinned providers'
+[direct dependency contract](../spider/userscripts_dir/presenter_benchmark_deps.py).
+The two providers that declare desktop OpenCV and KJNodes' headless declaration
+resolve to the proven headless distribution, which supplies their shared `cv2`
+module without installing conflicting OpenCV wheels.
 
-The pins below are the commits matching the four provider versions used by the
-proven local benchmark. Install them under `spider/custom_nodes/`, then restart
-ComfyUI:
+The dependency contract owns the provider origins and immutable commit pins. To
+check `spider/custom_nodes/` and print exact installation commands for any
+missing or mismatched provider, run:
 
 ```bash
-git clone --no-checkout https://github.com/kijai/ComfyUI-WanVideoWrapper.git spider/custom_nodes/ComfyUI-WanVideoWrapper
-git -C spider/custom_nodes/ComfyUI-WanVideoWrapper checkout --detach e091c4a77425d6a4a7f90ab30c513d24f8cb91cf
-git clone --no-checkout https://github.com/kijai/ComfyUI-KJNodes.git spider/custom_nodes/comfyui-kjnodes
-git -C spider/custom_nodes/comfyui-kjnodes checkout --detach f710f2635dbadbaf1ccf7d25572daa7dfec80bfd
-git clone --no-checkout https://github.com/kijai/ComfyUI-MelBandRoFormer.git spider/custom_nodes/ComfyUI-MelBandRoFormer
-git -C spider/custom_nodes/ComfyUI-MelBandRoFormer checkout --detach 92c86854e6654f4aacc97484471af95c98ea16d4
-git clone --no-checkout https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git spider/custom_nodes/comfyui-videohelpersuite
-git -C spider/custom_nodes/comfyui-videohelpersuite checkout --detach 3234937ff5f3ca19068aaba5042771514de2429d
+python3 spider/userscripts_dir/presenter_benchmark_deps.py \
+  check-nodes spider/custom_nodes
 ```
 
 Registry-installed providers do not retain Git metadata and therefore fail this
 strict reproducibility check. Move an existing provider directory aside before
-cloning its pinned checkout; do not clone over an existing directory or discard
-local changes.
+running the printed installation commands, then restart ComfyUI. Do not clone
+over an existing directory or discard local changes.
 
 Runtime output is written to:
 

@@ -12,9 +12,9 @@ error_exit() {
   exit 1
 }
 
-# shellcheck source=/dev/null
 PRESENTER_BENCHMARK_VENV_ACTIVATE="${PRESENTER_BENCHMARK_VENV_ACTIVATE:-/comfy/mnt/venv/bin/activate}"
 PRESENTER_BENCHMARK_CUSTOM_NODES_DIR="${PRESENTER_BENCHMARK_CUSTOM_NODES_DIR:-/basedir/custom_nodes}"
+# shellcheck source=/dev/null
 source "$PRESENTER_BENCHMARK_VENV_ACTIVATE" || error_exit "Failed to activate virtualenv"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
