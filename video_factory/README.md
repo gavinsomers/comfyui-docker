@@ -76,8 +76,8 @@ and SHA-256 checksum without committing generated media.
 
 The first pilot failed presenter acceptance: LTX 2.3 preserved identity but
 showed almost no useful mouth articulation behind the heavy beard. A controlled
-same-image, same-audio, same-prompt benchmark then compared LTX 2.3, fully local
-LTX 2.5, and LongCat Avatar. The tracked
+benchmark using the same image, audio, prompt, seed, and exact 16:9 centre crop
+then compared LTX 2.3, fully local LTX 2.5, and LongCat Avatar. The tracked
 [presenter benchmark proof](presenter-benchmark-proof.json) records render time,
 peak observed VRAM, objective lower-face motion diagnostics, and human visual
 review. LTX 2.5 won because it produced clear varied mouth shapes at 1024x576 in
@@ -157,7 +157,7 @@ The bundled LongCat graph is intentionally a one-window experimental adapter
 for approximately four-second proofs. On the RTX 5090, 1024x576 exhausted 32 GB
 VRAM; 768x432 with 35 swapped transformer blocks completed in 264 seconds with
 25,235 MiB peak observed total GPU memory. Its optional custom
-node dependencies are installed reproducibly by
+node dependencies are installed and verified by
 `spider/userscripts_dir/08-install-presenter-benchmark-deps.sh`.
 
 Runtime output is written to:
