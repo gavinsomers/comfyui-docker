@@ -485,6 +485,20 @@ def sync_manifest_assets(manifest: dict[str, Any], state: dict[str, Any]) -> Non
                 shot["presenter_qa"] = record["qa"].get("status", "pending")
 
 
+def build_presenter_qa_report(
+    context: dict[str, Any], manifest: dict[str, Any], state: dict[str, Any]
+) -> dict[str, Any]:
+    shots = {}
+    assets = state.get("assets", {})
+    for shot in manifest["shots"]:
+        if shot.get("type") != "presenter":
+            continue
+        qa = assets.get(f"shot:{shot['shot_id']}", {}).get("qa")
+        if isinstance(qa, dict):
+            shots[shot["shot_id"]] = qa
+    return {"version": 1, "project": context["slug"], "shots": shots}
+
+
 def presenter_qa_failures(
     context: dict[str, Any], manifest: dict[str, Any], state: dict[str, Any]
 ) -> list[str]:
@@ -512,6 +526,21 @@ def presenter_qa_failures(
             failures.append(f"{shot['shot_id']} (QA stale)")
         elif qa.get("status") != "pass":
             failures.append(f"{shot['shot_id']} (QA {qa.get('status', 'unknown')})")
+        else:
+            automatic_status = (qa.get("automatic_visible_motion_screen") or {}).get(
+                "status"
+            )
+            manual_review = qa.get("manual_review") or {}
+            criteria = manual_review.get("criteria") or {}
+            if (
+                automatic_status != "pass"
+                or manual_review.get("status") != "pass"
+                or not all(
+                    criteria.get(criterion) == "pass"
+                    for criterion in MANUAL_CRITERIA
+                )
+            ):
+                failures.append(f"{shot['shot_id']} (QA incomplete)")
     return failures
 
 
@@ -816,6 +845,7 @@ def command_qa_presenter(args: argparse.Namespace) -> int:
         "visible_articulation": args.visible_articulation,
         "identity_stability": args.identity_stability,
         "temporal_stability": args.temporal_stability,
+        "text_artifact_free": args.text_artifact_free,
     }
     if any(supplied_manual.values()) and len(selected) != 1:
         raise ValueError("Manual QA flags require --shot-id so one shot is reviewed at a time")
@@ -826,7 +856,7 @@ def command_qa_presenter(args: argparse.Namespace) -> int:
         minimum_mean=float(qa_config.get("minimum_mouth_motion_mean", 5.0)),
         minimum_p95=float(qa_config.get("minimum_mouth_motion_p95", 9.0)),
     )
-    report = {"version": 1, "project": context["slug"], "shots": {}}
+    evaluated_qa = []
     for shot in selected:
         key = f"shot:{shot['shot_id']}"
         record = state_asset(state, key)
@@ -861,7 +891,7 @@ def command_qa_presenter(args: argparse.Namespace) -> int:
             paths["presenter_qa_media"] / shot["shot_id"],
         )
         record["qa"] = qa
-        report["shots"][shot["shot_id"]] = qa
+        evaluated_qa.append(qa)
         motion = qa["analysis"]["motion"]
         print(
             f"{shot['shot_id']}: {qa['status']} "
@@ -870,13 +900,12 @@ def command_qa_presenter(args: argparse.Namespace) -> int:
         )
 
     save_state(paths["state"], state)
+    report = build_presenter_qa_report(context, manifest, state)
     write_json_atomic(paths["presenter_qa"], report)
     sync_manifest_assets(manifest, state)
     write_json_atomic(paths["manifest"], manifest)
     print(f"Presenter QA: {paths['presenter_qa']}")
-    if args.require_pass and any(
-        qa["status"] != "pass" for qa in report["shots"].values()
-    ):
+    if args.require_pass and any(qa["status"] != "pass" for qa in evaluated_qa):
         return 2
     return 0
 
@@ -953,6 +982,7 @@ def build_parser() -> argparse.ArgumentParser:
     qa_presenter.add_argument("--visible-articulation", choices=["pass", "fail"])
     qa_presenter.add_argument("--identity-stability", choices=["pass", "fail"])
     qa_presenter.add_argument("--temporal-stability", choices=["pass", "fail"])
+    qa_presenter.add_argument("--text-artifact-free", choices=["pass", "fail"])
     qa_presenter.add_argument("--notes")
     qa_presenter.add_argument("--require-pass", action="store_true")
     qa_presenter.set_defaults(func=command_qa_presenter)

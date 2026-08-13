@@ -72,7 +72,9 @@ Its 20-shot plan uses the same approximate visual ratio as the reference format:
 The mosquito-control pilot was rendered and assembled locally on an NVIDIA
 GeForce RTX 5090. The tracked [pilot render proof](pilot-render-proof.json)
 records the render environment, shot mix, probed delivery properties, byte size,
-and SHA-256 checksum without committing generated media.
+SHA-256 checksum, and the two validated seed overrides without committing
+generated media. The final 88-second 1080p delivery passed full-video review
+without visible text artifacts.
 
 The first pilot failed presenter acceptance: LTX 2.3 preserved identity but
 showed almost no useful mouth articulation behind the heavy beard. A controlled
@@ -80,9 +82,7 @@ benchmark using the same image, audio, prompt, seed, and exact 16:9 centre crop
 then compared LTX 2.3, fully local LTX 2.5, and LongCat Avatar. The tracked
 [presenter benchmark proof](presenter-benchmark-proof.json) records render time,
 peak observed VRAM, objective lower-face motion diagnostics, and human visual
-review. LTX 2.5 won because it produced clear varied mouth shapes at 1024x576 in
-48 seconds. LongCat also articulated but took 264 seconds at 768x432 and was
-more exaggerated; LTX 2.3 remained a failed baseline.
+review, and owns the detailed engine comparison and selection rationale.
 
 ## Commands
 
@@ -128,15 +128,17 @@ python3 scripts/video_factory.py qa-presenter "$PROJECT" --shot-id s0003 \
   --visible-articulation pass \
   --identity-stability pass \
   --temporal-stability pass \
-  --notes "Clear changing phoneme shapes; stable face and beard."
+  --text-artifact-free pass \
+  --notes "Clear phoneme shapes, stable identity, and no visible text."
 ```
 
 The automatic lower-face motion check catches nearly frozen mouths. It is not a
 phoneme-level synchronisation model, so it can never replace the manual visible
-articulation review. For every project containing presenter shots, assembly
-rejects missing, stale, pending, or failed presenter QA records. QA records are
-also invalidated when sampling, motion thresholds, the mouth ROI, or the
-screening algorithm changes. Contact sheets and `presenter-qa.json` are written
+articulation and text-artifact review. For every project containing presenter
+shots, assembly rejects missing, stale, incomplete, pending, or failed presenter
+QA records. QA records are also invalidated when sampling, motion thresholds,
+the mouth ROI, manual criteria, or the screening algorithm changes. Contact
+sheets and the complete state-derived `presenter-qa.json` report are written
 under the project runtime folder.
 
 Assemble once every shot has an asset and every required presenter review passes:
@@ -154,11 +156,36 @@ python3 scripts/presenter_benchmark.py \
 ```
 
 The bundled LongCat graph is intentionally a one-window experimental adapter
-for approximately four-second proofs. On the RTX 5090, 1024x576 exhausted 32 GB
-VRAM; 768x432 with 35 swapped transformer blocks completed in 264 seconds with
-25,235 MiB peak observed total GPU memory. Its optional custom
-node dependencies are installed and verified by
-`spider/userscripts_dir/08-install-presenter-benchmark-deps.sh`.
+for approximately four-second proofs. The presenter benchmark proof owns its
+tested resolution, performance, and memory constraints. Its optional Python
+dependencies and custom-node provider sources are verified by
+`spider/userscripts_dir/08-install-presenter-benchmark-deps.sh`; the benchmark
+also checks ComfyUI's `/object_info` registry before submitting a LongCat graph.
+The setup script requires each provider to have the expected GitHub origin,
+exact immutable commit, clean checkout, and complete node-class set. It reports
+the mismatch and exact installation commands without modifying the ignored
+runtime custom-node tree.
+
+The same preflight derives its bounded Python install list and import checks
+from the pinned providers'
+[direct dependency contract](../spider/userscripts_dir/presenter_benchmark_deps.py).
+The two providers that declare desktop OpenCV and KJNodes' headless declaration
+resolve to the proven headless distribution, which supplies their shared `cv2`
+module without installing conflicting OpenCV wheels.
+
+The dependency contract owns the provider origins and immutable commit pins. To
+check `spider/custom_nodes/` and print exact installation commands for any
+missing or mismatched provider, run:
+
+```bash
+python3 spider/userscripts_dir/presenter_benchmark_deps.py \
+  check-nodes spider/custom_nodes
+```
+
+Registry-installed providers do not retain Git metadata and therefore fail this
+strict reproducibility check. Move an existing provider directory aside before
+running the printed installation commands, then restart ComfyUI. Do not clone
+over an existing directory or discard local changes.
 
 Runtime output is written to:
 

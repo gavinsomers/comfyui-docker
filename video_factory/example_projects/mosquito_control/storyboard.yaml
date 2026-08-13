@@ -28,6 +28,7 @@ shots:
     narration: That distinction matters around flowers, bees, pets, and family spaces.
     visual: Honeybee visiting purple summer flowers in a modest garden, with a relaxed dog softly out of focus in the background.
   - type: presenter
+    seed: 509111
     narration: One bucket is rarely enough for an entire property.
   - type: broll
     narration: Place several stations near hedges, sheds, rain barrels, and damp shaded corners.
@@ -42,6 +43,7 @@ shots:
     narration: Saucers, tarps, gutters, toys, wheelbarrows, and tyres can all become breeding sites.
     visual: Wide documentary photograph of a slightly untidy garden utility area containing a wheelbarrow, folded tarp, plant saucer, old toy, gutter downpipe, and one tyre after rain.
   - type: presenter
+    seed: 509116
     narration: A treated trap works best when competing water sources are removed.
   - type: broll
     narration: After heavy rain, empty unwanted water and refresh treated stations when their labels require it.

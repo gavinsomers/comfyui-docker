@@ -1,5 +1,7 @@
 import argparse
 import json
+import os
+import subprocess
 import tempfile
 import unittest
 from collections import Counter
@@ -11,13 +13,27 @@ import yaml
 from scripts.video_factory import (
     _atempo_filter,
     assemble_project,
+    build_parser,
+    build_presenter_qa_report,
     conform_narration_speed,
     narration_path,
     presenter_qa_failures,
     render_narration,
 )
-from scripts.presenter_benchmark import ENGINE_SETTINGS
-from spider.userscripts_dir.presenter_benchmark_deps import requirements_satisfied
+from scripts.presenter_benchmark import ENGINE_SETTINGS, preflight_longcat_nodes
+from spider.userscripts_dir.presenter_benchmark_deps import (
+    CORE_NODE_CLASSES,
+    CUSTOM_NODE_PROVIDERS,
+    DEPENDENCY_CONTRACT,
+    IMPORTS,
+    REQUIREMENTS,
+    custom_node_provider_failures,
+    format_custom_node_provider_failures,
+    format_missing_custom_nodes,
+    missing_custom_node_sources,
+    missing_registered_nodes,
+    requirements_satisfied,
+)
 from video_factory.core import (
     FACTORY_ROOT,
     build_adapter_prompt,
@@ -30,6 +46,7 @@ from video_factory.core import (
 )
 from video_factory.qa import (
     DEFAULT_MOUTH_ROI,
+    MANUAL_CRITERIA,
     build_presenter_qa_policy,
     evaluate_presenter_qa,
     presenter_qa_policy_fingerprint,
@@ -77,6 +94,15 @@ class ProjectCompilationTests(unittest.TestCase):
         self.assertIn("dark bucket", first["prompt"].lower())
         self.assertEqual(presenter["engine"], "ltx25_presenter")
         self.assertIn("same fictional rural homesteader", presenter["prompt"].lower())
+
+    def test_compiled_manifest_preserves_validated_presenter_seed_overrides(self):
+        shots = {
+            shot["shot_id"]: shot
+            for shot in compile_shot_manifest(load_project(EXAMPLE_PROJECT))["shots"]
+        }
+
+        self.assertEqual(shots["s0011"]["seed"], 509111)
+        self.assertEqual(shots["s0016"]["seed"], 509116)
 
     def test_writes_valid_srt_from_shot_timing(self):
         manifest = compile_shot_manifest(load_project(EXAMPLE_PROJECT))
@@ -202,6 +228,12 @@ class PresenterQATests(unittest.TestCase):
             "metric_limitations": "Human review is still required.",
         }
 
+    @staticmethod
+    def _manual_review(**overrides: str) -> dict[str, str]:
+        review = {criterion: "pass" for criterion in MANUAL_CRITERIA}
+        review.update(overrides)
+        return review
+
     def test_motion_summary_uses_mean_and_true_p95(self):
         summary = summarize_motion([1, 2, 3, 4, 10])
 
@@ -214,11 +246,7 @@ class PresenterQATests(unittest.TestCase):
             self._analysis(4.8, 7.9),
             minimum_mean=5.0,
             minimum_p95=9.0,
-            manual_review={criterion: "pass" for criterion in (
-                "visible_articulation",
-                "identity_stability",
-                "temporal_stability",
-            )},
+            manual_review=self._manual_review(),
         )
 
         self.assertEqual(qa["automatic_visible_motion_screen"]["status"], "fail")
@@ -234,11 +262,7 @@ class PresenterQATests(unittest.TestCase):
             self._analysis(8.5, 14.5),
             minimum_mean=5.0,
             minimum_p95=9.0,
-            manual_review={criterion: "pass" for criterion in (
-                "visible_articulation",
-                "identity_stability",
-                "temporal_stability",
-            )},
+            manual_review=self._manual_review(),
         )
 
         self.assertEqual(pending["status"], "pending")
@@ -249,15 +273,58 @@ class PresenterQATests(unittest.TestCase):
             self._analysis(8.5, 14.5),
             minimum_mean=5.0,
             minimum_p95=9.0,
-            manual_review={
-                "visible_articulation": "fail",
-                "identity_stability": "pass",
-                "temporal_stability": "pass",
-            },
+            manual_review=self._manual_review(visible_articulation="fail"),
         )
 
         self.assertEqual(qa["automatic_visible_motion_screen"]["status"], "pass")
         self.assertEqual(qa["status"], "fail")
+
+    def test_text_artifact_failure_overrides_passing_presenter_checks(self):
+        qa = evaluate_presenter_qa(
+            self._analysis(8.5, 14.5),
+            minimum_mean=5.0,
+            minimum_p95=9.0,
+            manual_review=self._manual_review(text_artifact_free="fail"),
+        )
+
+        self.assertEqual(qa["automatic_visible_motion_screen"]["status"], "pass")
+        self.assertEqual(qa["manual_review"]["status"], "fail")
+        self.assertEqual(qa["status"], "fail")
+
+    def test_cli_accepts_text_artifact_free_presenter_review(self):
+        args = build_parser().parse_args(
+            [
+                "qa-presenter",
+                "project.yaml",
+                "--text-artifact-free",
+                "pass",
+            ]
+        )
+
+        self.assertEqual(args.text_artifact_free, "pass")
+
+    def test_presenter_qa_report_includes_all_state_records(self):
+        manifest = {
+            "shots": [
+                {"shot_id": "s0001", "type": "presenter"},
+                {"shot_id": "s0002", "type": "still"},
+                {"shot_id": "s0003", "type": "presenter"},
+            ]
+        }
+        state = {
+            "assets": {
+                "shot:s0001": {"qa": {"status": "pass"}},
+                "shot:s0003": {"qa": {"status": "pending"}},
+            }
+        }
+
+        report = build_presenter_qa_report(
+            {"slug": "test-project"}, manifest, state
+        )
+
+        self.assertEqual(set(report["shots"]), {"s0001", "s0003"})
+        self.assertEqual(report["shots"]["s0001"]["status"], "pass")
+        self.assertEqual(report["shots"]["s0003"]["status"], "pending")
 
     def test_assembly_gate_rejects_missing_pending_or_stale_presenter_qa(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -299,6 +366,19 @@ class PresenterQATests(unittest.TestCase):
             state["assets"]["shot:s0001"]["qa"]["policy_fingerprint"] = (
                 presenter_qa_policy_fingerprint(build_presenter_qa_policy())
             )
+            self.assertEqual(
+                presenter_qa_failures(context, manifest, state),
+                ["s0001 (QA incomplete)"],
+            )
+            state["assets"]["shot:s0001"]["qa"].update(
+                {
+                    "automatic_visible_motion_screen": {"status": "pass"},
+                    "manual_review": {
+                        "status": "pass",
+                        "criteria": self._manual_review(),
+                    },
+                }
+            )
             self.assertEqual(presenter_qa_failures(context, manifest, state), [])
 
             context["project"]["presenter"]["qa"]["sample_fps"] = 13
@@ -336,12 +416,207 @@ class PresenterQATests(unittest.TestCase):
 
 
 class PresenterBenchmarkDependencyTests(unittest.TestCase):
+    def test_dependency_contract_covers_pinned_provider_manifests(self):
+        expected = {
+            "ComfyUI-WanVideoWrapper": {
+                "accelerate",
+                "diffusers",
+                "einops",
+                "ftfy",
+                "gguf",
+                "opencv",
+                "peft",
+                "protobuf",
+                "pyloudnorm",
+                "scipy",
+                "sentencepiece",
+            },
+            "ComfyUI-KJNodes": {
+                "color-matcher",
+                "huggingface_hub",
+                "matplotlib",
+                "mss",
+                "numpy",
+                "opencv",
+                "pillow",
+                "scipy",
+            },
+            "ComfyUI-MelBandRoFormer": {"einops", "rotary_embedding_torch"},
+            "ComfyUI-VideoHelperSuite": {"imageio-ffmpeg", "opencv"},
+        }
+
+        for provider_name, dependencies in expected.items():
+            self.assertEqual(
+                set(CUSTOM_NODE_PROVIDERS[provider_name]["dependencies"]),
+                dependencies,
+            )
+        self.assertEqual(
+            set(DEPENDENCY_CONTRACT),
+            {"packaging"}.union(*expected.values()),
+        )
+
+    def test_install_and_import_checks_derive_from_dependency_contract(self):
+        self.assertEqual(
+            set(REQUIREMENTS),
+            {requirement for requirement, _module in DEPENDENCY_CONTRACT.values()},
+        )
+        self.assertEqual(
+            set(IMPORTS),
+            {module for _requirement, module in DEPENDENCY_CONTRACT.values()},
+        )
+        for requirement in REQUIREMENTS:
+            self.assertRegex(requirement, r"[<=>]")
+
     def test_dependency_preflight_rejects_missing_or_outdated_distributions(self):
         self.assertTrue(requirements_satisfied(("pip>=0",), ("json",)))
         self.assertFalse(requirements_satisfied(("pip>=9999",), ("json",)))
         self.assertFalse(
             requirements_satisfied(("definitely-not-installed>=1",), ("json",))
         )
+
+    def test_longcat_provider_manifest_covers_every_non_core_workflow_class(self):
+        template = json.loads(
+            (
+                FACTORY_ROOT
+                / "api_templates"
+                / "longcat_avatar_presenter.json"
+            ).read_text(encoding="utf-8")
+        )
+        workflow_classes = {node["class_type"] for node in template.values()}
+        mapped_classes = {
+            node_class
+            for provider in CUSTOM_NODE_PROVIDERS.values()
+            for node_class in provider["classes"]
+        }
+
+        self.assertEqual(workflow_classes - set(CORE_NODE_CLASSES), mapped_classes)
+        for provider in CUSTOM_NODE_PROVIDERS.values():
+            self.assertRegex(provider["commit"], r"^[0-9a-f]{40}$")
+            self.assertNotIn("revision", provider)
+
+    def test_custom_node_source_preflight_reports_absent_providers(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            missing = custom_node_provider_failures(root)
+
+        self.assertEqual(set(missing), set(CUSTOM_NODE_PROVIDERS))
+        guidance = format_custom_node_provider_failures(missing, root)
+        self.assertIn("ComfyUI-WanVideoWrapper", guidance)
+        self.assertIn("e091c4a77425d6a4a7f90ab30c513d24f8cb91cf", guidance)
+        self.assertIn(str(root / "ComfyUI-WanVideoWrapper"), guidance)
+        self.assertIn("checkout --detach", guidance)
+
+    def test_startup_preflight_fails_before_pip_when_providers_are_absent(self):
+        script = (
+            FACTORY_ROOT.parent
+            / "spider"
+            / "userscripts_dir"
+            / "08-install-presenter-benchmark-deps.sh"
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            activation = root / "activate"
+            activation.write_text("", encoding="utf-8")
+            result = subprocess.run(
+                ["bash", str(script)],
+                capture_output=True,
+                text=True,
+                env={
+                    **os.environ,
+                    "PRESENTER_BENCHMARK_VENV_ACTIVATE": str(activation),
+                    "PRESENTER_BENCHMARK_CUSTOM_NODES_DIR": str(
+                        root / "custom_nodes"
+                    ),
+                },
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("LongCat custom-node preflight failed", result.stderr)
+        self.assertNotIn("Installing presenter benchmark dependencies", result.stdout)
+
+    def test_custom_node_source_preflight_accepts_complete_providers(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            for provider_name, provider in CUSTOM_NODE_PROVIDERS.items():
+                provider_dir = root / provider["directory"]
+                provider_dir.mkdir()
+                (provider_dir / "nodes.py").write_text(
+                    "\n".join(provider["classes"]), encoding="utf-8"
+                )
+
+            def git_output(provider_dir, *args):
+                provider = next(
+                    item
+                    for item in CUSTOM_NODE_PROVIDERS.values()
+                    if item["directory"] == provider_dir.name
+                )
+                if args == ("config", "--get", "remote.origin.url"):
+                    return True, provider["repository"].removesuffix(".git")
+                if args == ("rev-parse", "HEAD"):
+                    return True, provider["commit"]
+                return True, ""
+
+            with patch(
+                "spider.userscripts_dir.presenter_benchmark_deps._git_output",
+                side_effect=git_output,
+            ):
+                self.assertEqual(custom_node_provider_failures(root), {})
+
+    def test_custom_node_preflight_rejects_wrong_git_identity_and_state(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            for provider in CUSTOM_NODE_PROVIDERS.values():
+                provider_dir = root / provider["directory"]
+                provider_dir.mkdir()
+                (provider_dir / "nodes.py").write_text(
+                    "\n".join(provider["classes"]), encoding="utf-8"
+                )
+
+            outputs = {
+                "config": (True, "https://github.com/example/wrong-provider.git"),
+                "rev-parse": (True, "0" * 40),
+                "status": (True, "?? local-node.py"),
+            }
+            with patch(
+                "spider.userscripts_dir.presenter_benchmark_deps._git_output",
+                side_effect=lambda _provider_dir, *args: outputs[args[0]],
+            ):
+                failures = custom_node_provider_failures(root)
+
+        for provider_failures in failures.values():
+            self.assertIn(
+                "origin is https://github.com/example/wrong-provider.git",
+                provider_failures,
+            )
+            self.assertIn("HEAD is " + "0" * 40, provider_failures)
+            self.assertIn(
+                "checkout has local or untracked changes", provider_failures
+            )
+
+    def test_registered_node_preflight_groups_missing_classes_by_provider(self):
+        available = set(CORE_NODE_CLASSES)
+        for provider in CUSTOM_NODE_PROVIDERS.values():
+            available.update(provider["classes"])
+        available.remove("VHS_VideoCombine")
+
+        self.assertEqual(
+            missing_registered_nodes(available),
+            {"ComfyUI-VideoHelperSuite": ("VHS_VideoCombine",)},
+        )
+
+    def test_benchmark_preflight_fails_before_rendering_missing_server_nodes(self):
+        available = {
+            node_class: {}
+            for provider in CUSTOM_NODE_PROVIDERS.values()
+            for node_class in provider["classes"]
+            if node_class != "WanVideoLongCatAvatarExtendEmbeds"
+        }
+        with patch("scripts.presenter_benchmark.request_json", return_value=available):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "ComfyUI-WanVideoWrapper.*WanVideoLongCatAvatarExtendEmbeds",
+            ):
+                preflight_longcat_nodes("http://127.0.0.1:8188")
 
 
 class NarrationConformanceTests(unittest.TestCase):

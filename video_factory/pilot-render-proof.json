@@ -1,6 +1,6 @@
 {
   "project": "mosquito-control-pilot",
-  "rendered_at": "2026-08-13T14:52:34+01:00",
+  "rendered_at": "2026-08-13T17:31:40+01:00",
   "hardware": {
     "gpu": "NVIDIA GeForce RTX 5090",
     "driver": "580.173.02",
@@ -25,7 +25,44 @@
       "channels": 1
     },
     "duration_seconds": 88.000,
-    "bytes": 73774189,
-    "sha256": "34cfa2a311f057390d246aec88a03d59b70f78c21753eb8584e3bce20420185c"
+    "bytes": 71206694,
+    "sha256": "9f0bb45f6523787288a0c86ac1a72c0573d6f97146cbdb6a7c8a8263b2fcf360"
+  },
+  "presenter_engine": "ltx25_presenter",
+  "seed_overrides": [
+    {
+      "shot_id": "s0011",
+      "seed": 509111,
+      "automatic_mouth_motion": {
+        "mean_absolute_luma_delta": 6.54,
+        "p95_absolute_luma_delta": 9.59,
+        "status": "pass"
+      },
+      "human_visual_qa": {
+        "visible_articulation": "pass",
+        "identity_stability": "pass",
+        "temporal_stability": "pass",
+        "text_artifact_free": "pass"
+      }
+    },
+    {
+      "shot_id": "s0016",
+      "seed": 509116,
+      "automatic_mouth_motion": {
+        "mean_absolute_luma_delta": 6.94,
+        "p95_absolute_luma_delta": 12.48,
+        "status": "pass"
+      },
+      "human_visual_qa": {
+        "visible_articulation": "pass",
+        "identity_stability": "pass",
+        "temporal_stability": "pass",
+        "text_artifact_free": "pass"
+      }
+    }
+  ],
+  "full_delivery_visual_qa": {
+    "status": "pass",
+    "text_artifact_free": "pass"
   }
 }
