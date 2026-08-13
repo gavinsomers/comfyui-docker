@@ -599,16 +599,21 @@ def assemble_project(
             or cache_record.get("cache_key") != cache_key
         ):
             print(f"assembly: preparing {shot['shot_id']}")
-            create_assembly_clip(
-                asset,
-                clip,
-                float(shot["duration"]),
-                width,
-                height,
-                fps,
-                video_codec,
-                pixel_format,
-            )
+            temporary_clip = clip.with_name(f".{clip.stem}.tmp{clip.suffix}")
+            try:
+                create_assembly_clip(
+                    asset,
+                    temporary_clip,
+                    float(shot["duration"]),
+                    width,
+                    height,
+                    fps,
+                    video_codec,
+                    pixel_format,
+                )
+                temporary_clip.replace(clip)
+            finally:
+                temporary_clip.unlink(missing_ok=True)
             write_json_atomic(
                 cache_record_path,
                 {"version": 1, "cache_key": cache_key},

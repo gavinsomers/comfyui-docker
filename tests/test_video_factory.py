@@ -319,6 +319,47 @@ class AssemblyTests(unittest.TestCase):
                 assemble_project(context, manifest, state, paths, overwrite=False)
                 self.assertEqual(create_clip.call_count, 4)
 
+    def test_failed_overwrite_preserves_resumable_clip_cache(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            context, manifest, state, paths, _ = self._fixture(root)
+            clip = paths["clips"] / "0001-s0001.mp4"
+            temporary_clip = paths["clips"] / ".0001-s0001.tmp.mp4"
+
+            def create_valid_clip(asset, target, *args):
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(b"valid normalized clip")
+
+            def fail_after_partial_write(asset, target, *args):
+                target.write_bytes(b"partial clip")
+                raise RuntimeError("encoding interrupted")
+
+            with patch(
+                "scripts.video_factory.create_assembly_clip",
+                side_effect=create_valid_clip,
+            ) as create_clip, patch(
+                "scripts.video_factory.subprocess.run",
+                side_effect=self._fake_ffmpeg,
+            ):
+                assemble_project(context, manifest, state, paths, overwrite=False)
+                cache_record = clip.with_suffix(".cache.json").read_bytes()
+
+                create_clip.side_effect = fail_after_partial_write
+                with self.assertRaisesRegex(RuntimeError, "encoding interrupted"):
+                    assemble_project(context, manifest, state, paths, overwrite=True)
+
+                self.assertEqual(clip.read_bytes(), b"valid normalized clip")
+                self.assertEqual(
+                    clip.with_suffix(".cache.json").read_bytes(),
+                    cache_record,
+                )
+                self.assertFalse(temporary_clip.exists())
+
+                create_clip.side_effect = create_valid_clip
+                create_clip.reset_mock()
+                assemble_project(context, manifest, state, paths, overwrite=False)
+                create_clip.assert_not_called()
+
 
 class AutomaticStoryboardTests(unittest.TestCase):
     def test_script_splitter_produces_short_reusable_chunks(self):
