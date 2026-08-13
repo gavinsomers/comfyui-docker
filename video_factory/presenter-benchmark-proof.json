@@ -35,6 +35,7 @@
       "mouth_motion_mean": 6.8029,
       "mouth_motion_p95": 12.7643,
       "audio_motion_correlation_zero_lag": 0.4682,
+      "exact_audio_proof_sha256": "54cddaa5d5ec9b5947ceca2c2f457ed12ccb2cc4ea0b612e9c9f50eef230a0e0",
       "visible_articulation": "pass",
       "identity_stability": "pass",
       "temporal_stability": "pass",

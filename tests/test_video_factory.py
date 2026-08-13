@@ -11,6 +11,8 @@ import yaml
 from scripts.video_factory import (
     _atempo_filter,
     assemble_project,
+    build_parser,
+    build_presenter_qa_report,
     conform_narration_speed,
     narration_path,
     presenter_qa_failures,
@@ -30,6 +32,7 @@ from video_factory.core import (
 )
 from video_factory.qa import (
     DEFAULT_MOUTH_ROI,
+    MANUAL_CRITERIA,
     build_presenter_qa_policy,
     evaluate_presenter_qa,
     presenter_qa_policy_fingerprint,
@@ -77,6 +80,15 @@ class ProjectCompilationTests(unittest.TestCase):
         self.assertIn("dark bucket", first["prompt"].lower())
         self.assertEqual(presenter["engine"], "ltx25_presenter")
         self.assertIn("same fictional rural homesteader", presenter["prompt"].lower())
+
+    def test_compiled_manifest_preserves_validated_presenter_seed_overrides(self):
+        shots = {
+            shot["shot_id"]: shot
+            for shot in compile_shot_manifest(load_project(EXAMPLE_PROJECT))["shots"]
+        }
+
+        self.assertEqual(shots["s0011"]["seed"], 509111)
+        self.assertEqual(shots["s0016"]["seed"], 509116)
 
     def test_writes_valid_srt_from_shot_timing(self):
         manifest = compile_shot_manifest(load_project(EXAMPLE_PROJECT))
@@ -202,6 +214,12 @@ class PresenterQATests(unittest.TestCase):
             "metric_limitations": "Human review is still required.",
         }
 
+    @staticmethod
+    def _manual_review(**overrides: str) -> dict[str, str]:
+        review = {criterion: "pass" for criterion in MANUAL_CRITERIA}
+        review.update(overrides)
+        return review
+
     def test_motion_summary_uses_mean_and_true_p95(self):
         summary = summarize_motion([1, 2, 3, 4, 10])
 
@@ -214,11 +232,7 @@ class PresenterQATests(unittest.TestCase):
             self._analysis(4.8, 7.9),
             minimum_mean=5.0,
             minimum_p95=9.0,
-            manual_review={criterion: "pass" for criterion in (
-                "visible_articulation",
-                "identity_stability",
-                "temporal_stability",
-            )},
+            manual_review=self._manual_review(),
         )
 
         self.assertEqual(qa["automatic_visible_motion_screen"]["status"], "fail")
@@ -234,11 +248,7 @@ class PresenterQATests(unittest.TestCase):
             self._analysis(8.5, 14.5),
             minimum_mean=5.0,
             minimum_p95=9.0,
-            manual_review={criterion: "pass" for criterion in (
-                "visible_articulation",
-                "identity_stability",
-                "temporal_stability",
-            )},
+            manual_review=self._manual_review(),
         )
 
         self.assertEqual(pending["status"], "pending")
@@ -249,15 +259,58 @@ class PresenterQATests(unittest.TestCase):
             self._analysis(8.5, 14.5),
             minimum_mean=5.0,
             minimum_p95=9.0,
-            manual_review={
-                "visible_articulation": "fail",
-                "identity_stability": "pass",
-                "temporal_stability": "pass",
-            },
+            manual_review=self._manual_review(visible_articulation="fail"),
         )
 
         self.assertEqual(qa["automatic_visible_motion_screen"]["status"], "pass")
         self.assertEqual(qa["status"], "fail")
+
+    def test_text_artifact_failure_overrides_passing_presenter_checks(self):
+        qa = evaluate_presenter_qa(
+            self._analysis(8.5, 14.5),
+            minimum_mean=5.0,
+            minimum_p95=9.0,
+            manual_review=self._manual_review(text_artifact_free="fail"),
+        )
+
+        self.assertEqual(qa["automatic_visible_motion_screen"]["status"], "pass")
+        self.assertEqual(qa["manual_review"]["status"], "fail")
+        self.assertEqual(qa["status"], "fail")
+
+    def test_cli_accepts_text_artifact_free_presenter_review(self):
+        args = build_parser().parse_args(
+            [
+                "qa-presenter",
+                "project.yaml",
+                "--text-artifact-free",
+                "pass",
+            ]
+        )
+
+        self.assertEqual(args.text_artifact_free, "pass")
+
+    def test_presenter_qa_report_includes_all_state_records(self):
+        manifest = {
+            "shots": [
+                {"shot_id": "s0001", "type": "presenter"},
+                {"shot_id": "s0002", "type": "still"},
+                {"shot_id": "s0003", "type": "presenter"},
+            ]
+        }
+        state = {
+            "assets": {
+                "shot:s0001": {"qa": {"status": "pass"}},
+                "shot:s0003": {"qa": {"status": "pending"}},
+            }
+        }
+
+        report = build_presenter_qa_report(
+            {"slug": "test-project"}, manifest, state
+        )
+
+        self.assertEqual(set(report["shots"]), {"s0001", "s0003"})
+        self.assertEqual(report["shots"]["s0001"]["status"], "pass")
+        self.assertEqual(report["shots"]["s0003"]["status"], "pending")
 
     def test_assembly_gate_rejects_missing_pending_or_stale_presenter_qa(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -298,6 +351,19 @@ class PresenterQATests(unittest.TestCase):
             )
             state["assets"]["shot:s0001"]["qa"]["policy_fingerprint"] = (
                 presenter_qa_policy_fingerprint(build_presenter_qa_policy())
+            )
+            self.assertEqual(
+                presenter_qa_failures(context, manifest, state),
+                ["s0001 (QA incomplete)"],
+            )
+            state["assets"]["shot:s0001"]["qa"].update(
+                {
+                    "automatic_visible_motion_screen": {"status": "pass"},
+                    "manual_review": {
+                        "status": "pass",
+                        "criteria": self._manual_review(),
+                    },
+                }
             )
             self.assertEqual(presenter_qa_failures(context, manifest, state), [])
 

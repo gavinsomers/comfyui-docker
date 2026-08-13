@@ -72,7 +72,9 @@ Its 20-shot plan uses the same approximate visual ratio as the reference format:
 The mosquito-control pilot was rendered and assembled locally on an NVIDIA
 GeForce RTX 5090. The tracked [pilot render proof](pilot-render-proof.json)
 records the render environment, shot mix, probed delivery properties, byte size,
-and SHA-256 checksum without committing generated media.
+SHA-256 checksum, and the two validated seed overrides without committing
+generated media. The final 88-second 1080p delivery passed full-video review
+without visible text artifacts.
 
 The first pilot failed presenter acceptance: LTX 2.3 preserved identity but
 showed almost no useful mouth articulation behind the heavy beard. A controlled
@@ -128,15 +130,17 @@ python3 scripts/video_factory.py qa-presenter "$PROJECT" --shot-id s0003 \
   --visible-articulation pass \
   --identity-stability pass \
   --temporal-stability pass \
-  --notes "Clear changing phoneme shapes; stable face and beard."
+  --text-artifact-free pass \
+  --notes "Clear phoneme shapes, stable identity, and no visible text."
 ```
 
 The automatic lower-face motion check catches nearly frozen mouths. It is not a
 phoneme-level synchronisation model, so it can never replace the manual visible
-articulation review. For every project containing presenter shots, assembly
-rejects missing, stale, pending, or failed presenter QA records. QA records are
-also invalidated when sampling, motion thresholds, the mouth ROI, or the
-screening algorithm changes. Contact sheets and `presenter-qa.json` are written
+articulation and text-artifact review. For every project containing presenter
+shots, assembly rejects missing, stale, incomplete, pending, or failed presenter
+QA records. QA records are also invalidated when sampling, motion thresholds,
+the mouth ROI, manual criteria, or the screening algorithm changes. Contact
+sheets and the complete state-derived `presenter-qa.json` report are written
 under the project runtime folder.
 
 Assemble once every shot has an asset and every required presenter review passes:

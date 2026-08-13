@@ -20,7 +20,12 @@ DEFAULT_FRAME_HEIGHT = 64
 PRESENTER_QA_ALGORITHM = "lower-face-luma-motion"
 PRESENTER_QA_ALGORITHM_VERSION = 1
 AUDIO_SAMPLES_PER_WINDOW = 100
-MANUAL_CRITERIA = ("visible_articulation", "identity_stability", "temporal_stability")
+MANUAL_CRITERIA = (
+    "visible_articulation",
+    "identity_stability",
+    "temporal_stability",
+    "text_artifact_free",
+)
 
 
 def build_presenter_qa_policy(
