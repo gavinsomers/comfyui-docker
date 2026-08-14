@@ -111,6 +111,10 @@ The tracked [V2 presenter selection proof](presenter-v2-selection-proof.json)
 records the selected parameters, hashes, CUDA 12.8 runtime contract, and license
 review without committing generated media.
 
+The tracked [final V2 delivery proof](final-v2-delivery-proof.json) owns the
+assembled output checksum and records the required presenter, corrected B-roll,
+and technical QA approvals.
+
 ## Commands
 
 Run from the repository root:
@@ -135,14 +139,16 @@ python3 scripts/prepare_mosquito_v2_assets.py
 
 The optional V2 presenter stack requires the exact pinned LivePortrait provider
 and a pinned LatentSync 1.6 runtime. `09-install-video-factory-v2-deps.sh`
-verifies the clean LivePortrait checkout, installs only bounded dependencies,
+verifies the clean LivePortrait checkout, installs its bounded dependencies,
 checks out LatentSync commit `a229c3948406bc2cf6eaf4873e662e70c6a04746`,
-applies the tracked Face Alignment + BlazeFace inference patch, and downloads
-checksum-verified model files from immutable Hugging Face revisions. The
-LivePortrait checkout intentionally uses the import-safe directory name
+rebuilds its isolated Python dependencies as the exact approved distribution
+set, applies the tracked Face Alignment + BlazeFace inference patch, and
+downloads checksum-verified model files from immutable Hugging Face revisions.
+The LivePortrait checkout intentionally uses the import-safe directory name
 `ComfyUI_LivePortraitKJ`. LatentSync dependencies are isolated under
 `spider/run/latentsync-1.6/pydeps`; the production `spider` environment remains
-on PyTorch 2.11.0 + CUDA 12.8.
+on PyTorch 2.11.0+cu128 with CUDA 12.8. CUDA 13.0 remains an isolated canary and
+is not promoted to production.
 
 The model checkpoint is tagged `openrail++`. The tracked
 [license record](licenses/latentsync-1.6.md) records the exact model revision,
