@@ -1,0 +1,193 @@
+{
+  "version": 2,
+  "selected_at": "2026-08-14T09:14:59+0100",
+  "project": "mosquito-control-pilot-v2",
+  "shot_id": "s0003",
+  "selected_presenter_pipeline": "liveportrait-latentsync16-mask3-mouthrestore",
+  "selected_factory_adapter": "latentsync16_mouthrestore",
+  "stages": [
+    "liveportrait_motion",
+    "LatentSync 1.6 official mask3",
+    "tracked source-preserving mouth restore"
+  ],
+  "selection_reason": "The approved LivePortrait base plus LatentSync 1.6 official mask3 and tracked mouth-only restore passed automatic motion screening, exact source-preservation diagnostics, still-frame checks, and Gavin’s mandatory playback review for lip timing, mask stability, teeth/beard behaviour, and blend seams.",
+  "human_review": {
+    "status": "pass",
+    "candidate": "liveportrait-latentsync16-mask3-mouthrestore",
+    "comparison_artifact": "basedir/output/video_factory/mosquito-control-pilot-v2/benchmarks/comparison-mouthmask-mask3-3up.mp4",
+    "comparison_artifact_sha256": "f34e1806ac4938593b5e435030a19bd7fc5580f7a221073826b9adac3f619277",
+    "mandatory_playback_criteria": [
+      "lip_sync",
+      "temporal_stability",
+      "beard_teeth_stability",
+      "blend_seam_free"
+    ],
+    "reviewed_at": "2026-08-14T09:14:59+0100",
+    "reviewed_by": "Gavin",
+    "criteria": {
+      "lip_sync": "pass",
+      "temporal_stability": "pass",
+      "beard_teeth_stability": "pass",
+      "blend_seam_free": "pass"
+    }
+  },
+  "automatic_qa": {
+    "status": "pass",
+    "mean_mouth_motion": 3.9239,
+    "p95_mouth_motion": 7.612,
+    "syncnet_diagnostic": {
+      "av_offset_frames": 0,
+      "minimum_distance": 12.790812492370605,
+      "sync_confidence": 1.3246240615844727,
+      "interpretation": "Diagnostic only; zero-frame offset with low confidence cannot replace mandatory human playback review."
+    },
+    "limitations": "Motion and low-confidence SyncNet diagnostics do not replace the recorded human playback review."
+  },
+  "source_preservation": {
+    "latent_mask": "Official LatentSync latentsync/utils/mask3.png",
+    "latent_mask_sha256": "c0f68a3980eaa434d50e10baea0b66c5e8f4e45128b0105462366ddfc6de90ae",
+    "latent_mask_black_fraction": 0.193039,
+    "default_latent_mask_black_fraction": 0.406998,
+    "restore_method": "tracked-source-preserving-mouth-composite",
+    "restore_mask": {
+      "shape": "temporally-smoothed ellipse",
+      "pad_x_pixels": 11.0,
+      "pad_y_pixels": 12.0,
+      "minimum_radius_x_pixels": 37.0,
+      "minimum_radius_y_pixels": 22.0,
+      "feather_sigma_pixels": 4.0,
+      "mean_affected_frame_fraction": 0.009867824978298611,
+      "maximum_affected_frame_fraction": 0.010296291775173612,
+      "mean_feather_frame_fraction": 0.008262736002604167
+    },
+    "source_preservation": {
+      "definition": "Pixels with alpha <= 0.001 before video encoding",
+      "maximum_absolute_channel_difference": 0.0
+    },
+    "detection_failure_frames": [],
+    "diagnostics": "basedir/output/video_factory/mosquito-control-pilot-v2/benchmarks/liveportrait-latentsync16-mask3-mouthrestore/mask-diagnostics.json",
+    "preview": "basedir/output/video_factory/mosquito-control-pilot-v2/benchmarks/liveportrait-latentsync16-mask3-mouthrestore/mask-preview.png"
+  },
+  "render_contract": {
+    "dimensions": [
+      1024,
+      576
+    ],
+    "fps": 25,
+    "frames": 100,
+    "duration_seconds": 4.0,
+    "seed": 509003,
+    "options": {
+      "mask": "mask3",
+      "inference_steps": 20,
+      "guidance_scale": 1.5,
+      "enable_deepcache": false,
+      "pad_x": 11.0,
+      "pad_y": 12.0,
+      "minimum_radius_x": 37.0,
+      "minimum_radius_y": 22.0,
+      "feather_sigma": 4.0
+    },
+    "portrait_sha256": "edcb21e0ca7fa54a7351d6312d7272a6075f035e453f0d5ab554e214a4534340",
+    "audio_sha256": "17f705509355d04209d5cf1fb354adc4d16f1945ef83b9d8b03dac181a33cd02",
+    "liveportrait_motion_sha256": "a1a8dc5d60d22d9cb2ed5d5d9371b0a78b653673579b57207e6b5ad4129e592a",
+    "approved_proof_sha256": "d011aaba1119cc508e5fee94dddcc52a824179745316c078f339086ee728120a"
+  },
+  "approved_shot_overrides": {
+    "s0007": {
+      "status": "pass",
+      "candidate": "option-B-feather-only",
+      "reviewed_at": "2026-08-14T10:43:08+01:00",
+      "reviewed_by": "Gavin",
+      "selection_reason": "The tighter mask and 5.5px feather remove the left mustache-cheek edge ringing while preserving stable cheek and nose lighting without synthetic skin distortion. Alternate seeds C and D were rejected for cheek-light variance and mustache-line flicker respectively.",
+      "comparison_artifact": "basedir/output/video_factory/mosquito-control-pilot-v2/benchmarks/s0007-fix/comparison-face-4up.mp4",
+      "comparison_artifact_sha256": "67c1e20232660335bd74d68b296a4602bc3e4f3a6d233c2efc2dc0c3302b100d",
+      "approved_proof": "basedir/output/video_factory/mosquito-control-pilot-v2/benchmarks/s0007-fix/feather-only/proof.mp4",
+      "approved_proof_sha256": "a9214a4fd08d6fe0ff302fd72bf35af37d3ad1670c73810c11c875426f5c2888",
+      "render_contract": {
+        "dimensions": [
+          1024,
+          576
+        ],
+        "fps": 25,
+        "frames": 102,
+        "duration_seconds": 4.08,
+        "seed": 509007,
+        "options": {
+          "mask": "mask3",
+          "inference_steps": 20,
+          "guidance_scale": 1.5,
+          "enable_deepcache": false,
+          "pad_x": 9.0,
+          "pad_y": 12.0,
+          "minimum_radius_x": 35.0,
+          "minimum_radius_y": 22.0,
+          "feather_sigma": 5.5
+        },
+        "audio_sha256": "f22164a43c2e38f5aab92c667c0ce0944483aef8eb0f379669c7717a4f441d5b",
+        "liveportrait_motion_sha256": "282ce30e3407177e411bf9474c6e4d255af3a01566350e237c2bb5b1f1e74d3f"
+      },
+      "automatic_qa": {
+        "status": "pass",
+        "mean_mouth_motion": 3.9733,
+        "p95_mouth_motion": 7.7365
+      },
+      "source_preservation": {
+        "mean_affected_frame_fraction": 0.011387810468154274,
+        "maximum_affected_frame_fraction": 0.011608547634548612,
+        "maximum_absolute_channel_difference_outside_mask": 0.0,
+        "detection_failure_frames": []
+      }
+    }
+  },
+  "runtime": {
+    "version": 1,
+    "container_torch": "2.11.0+cu128",
+    "container_cuda": "12.8",
+    "source_repository": "https://github.com/bytedance/LatentSync.git",
+    "source_commit": "a229c3948406bc2cf6eaf4873e662e70c6a04746",
+    "model_repository": "ByteDance/LatentSync-1.6",
+    "model_revision": "c42c7e6c8e9c213626389fa7d9a3c444b8536353",
+    "model_license": "openrail++",
+    "checkpoint_sha256": "0a478e89eb660f82da4c35dbdde8a5adfb27f99d1b4e50edd03729e1e98316d3",
+    "whisper_sha256": "65147644a518d12f04e32d6f3b26facc3f8dd46e5390956a9424a650c0ce22b9",
+    "vae_revision": "31f26fdeee1355a5c34592e401dd41e45d25a493",
+    "vae_sha256": "a1d993488569e928462932c8c38a0760b874d166399b14414135bd9c42df5815",
+    "patched_files": {
+      "latentsync/utils/face_detector.py": "6c4afe5715ab75b7992197bba9eeea04ce177286d349e92952d5a26c76d1f8dc",
+      "latentsync/utils/image_processor.py": "a755a32c3e4dab84609dd5dd3beafa77a8c2016ec439a012ce8391dabd05b0a9",
+      "scripts/inference.py": "c5ed1903951fb9bd7c0a3c6e278e9e0f1081015567e03eb651f23b888425f728"
+    },
+    "config_sha256": "1b4d2dd6ae6b592d70775898ffd2f3c303a037cfeacbe60c6b0c8d8bbfe102ef",
+    "detector": "ComfyUI-LivePortraitKJ Face Alignment 68-point + BlazeFace",
+    "comfyui_source": "/comfy/mnt/ComfyUI",
+    "runtime_patch_sha256": "6b6c94c064eac6bb78a9be0bb879027784de56cc803442075930abde917f500f",
+    "mouth_restore_sha256": "9bb4688db788fbdc38c50ffcbe7171002d1d4cef98eec34c6ef1abb75697bb40",
+    "tracked_config_sha256": "1b4d2dd6ae6b592d70775898ffd2f3c303a037cfeacbe60c6b0c8d8bbfe102ef"
+  },
+  "production_runtime_decision": {
+    "container": "spider",
+    "torch": "2.11.0+cu128",
+    "cuda": "12.8",
+    "cu130_validation": "passed in isolation but not promoted"
+  },
+  "license": {
+    "code": "Apache-2.0",
+    "checkpoint": "openrail++",
+    "record": "licenses/latentsync-1.6.md",
+    "decision": "approved for this ordinary educational explainer and channel publication subject to recorded restrictions"
+  },
+  "runtime_evidence": {
+    "ignored_benchmark_report": "basedir/output/video_factory/mosquito-control-pilot-v2/benchmarks/benchmark-report.json",
+    "ignored_benchmark_report_sha256": "2c07e0f1b3e15423f4900589ceb27b1db641dbcbf956cf5159ba2e789e137c77",
+    "ignored_approved_proof": "basedir/output/video_factory/mosquito-control-pilot-v2/benchmarks/liveportrait-latentsync16-mask3-mouthrestore/proof.mp4",
+    "generated_media_committed": false
+  },
+  "repeatability_note": "The fixed seed and immutable runtime make the pipeline semantically reproducible, but GPU inference is not promised to be pixel-identical across runs.",
+  "long_shot_motion_policy": {
+    "approved_driving_capacity_frames": 100,
+    "extension": "forward/reverse loop conformed to the exact presenter frame count",
+    "applies_when": "presenter frame_count exceeds 100",
+    "reason": "avoid a hard loop boundary while preserving the approved four-second driver unchanged"
+  }
+}

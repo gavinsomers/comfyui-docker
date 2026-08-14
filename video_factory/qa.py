@@ -22,8 +22,11 @@ PRESENTER_QA_ALGORITHM_VERSION = 1
 AUDIO_SAMPLES_PER_WINDOW = 100
 MANUAL_CRITERIA = (
     "visible_articulation",
+    "lip_sync",
     "identity_stability",
     "temporal_stability",
+    "beard_teeth_stability",
+    "blend_seam_free",
     "text_artifact_free",
 )
 

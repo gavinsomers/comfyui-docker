@@ -1,0 +1,104 @@
+{
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "video_factory/presenter.png"
+    }
+  },
+  "2": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": ["1", 0],
+      "upscale_method": "lanczos",
+      "width": 1024,
+      "height": 576,
+      "crop": "center"
+    }
+  },
+  "3": {
+    "class_type": "VHS_LoadVideo",
+    "inputs": {
+      "video": "video_factory/driving.mp4",
+      "force_rate": 25,
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": 125,
+      "skip_first_frames": 0,
+      "select_every_nth": 1
+    }
+  },
+  "4": {
+    "class_type": "DownloadAndLoadLivePortraitModels",
+    "inputs": {
+      "precision": "fp16",
+      "mode": "human"
+    }
+  },
+  "5": {
+    "class_type": "LivePortraitLoadFaceAlignmentCropper",
+    "inputs": {
+      "face_detector": "blazeface_back_camera",
+      "landmarkrunner_device": "CUDA",
+      "face_detector_device": "cuda",
+      "face_detector_dtype": "fp16",
+      "keep_model_loaded": true
+    }
+  },
+  "6": {
+    "class_type": "LivePortraitCropper",
+    "inputs": {
+      "pipeline": ["4", 0],
+      "cropper": ["5", 0],
+      "source_image": ["2", 0],
+      "dsize": 512,
+      "scale": 2.3,
+      "vx_ratio": 0.0,
+      "vy_ratio": -0.125,
+      "face_index": 0,
+      "face_index_order": "large-small",
+      "rotate": true
+    }
+  },
+  "7": {
+    "class_type": "LivePortraitProcess",
+    "inputs": {
+      "pipeline": ["4", 0],
+      "crop_info": ["6", 1],
+      "source_image": ["2", 0],
+      "driving_images": ["3", 0],
+      "lip_zero": true,
+      "lip_zero_threshold": 0.03,
+      "stitching": true,
+      "delta_multiplier": 0.55,
+      "mismatch_method": "mirror",
+      "relative_motion_mode": "relative",
+      "driving_smooth_observation_variance": 0.000003,
+      "expression_friendly": false,
+      "expression_friendly_multiplier": 1.0
+    }
+  },
+  "8": {
+    "class_type": "LivePortraitComposite",
+    "inputs": {
+      "source_image": ["2", 0],
+      "cropped_image": ["7", 0],
+      "liveportrait_out": ["7", 1]
+    }
+  },
+  "9": {
+    "class_type": "VHS_VideoCombine",
+    "inputs": {
+      "images": ["8", 0],
+      "frame_rate": 25,
+      "loop_count": 0,
+      "filename_prefix": "video_factory/presenter-motion",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 18,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true
+    }
+  }
+}

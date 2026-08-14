@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -31,6 +32,30 @@ REPO_ROOT = FACTORY_ROOT.parent
 DEFAULT_BASEDIR = REPO_ROOT / "basedir"
 DEFAULT_SERVER = "http://127.0.0.1:8188"
 VALID_SHOT_TYPES = {"presenter", "broll", "still"}
+VALID_PRE_GRADE_KEYS = {
+    "fps_method",
+    "denoise",
+    "sharpen",
+    "contrast",
+    "brightness",
+    "saturation",
+    "gamma",
+    "blue_shadows",
+    "blue_midtones",
+    "blue_highlights",
+    "source_crop",
+}
+VALID_LIP_SYNC_OPTION_KEYS = {
+    "mask",
+    "inference_steps",
+    "guidance_scale",
+    "enable_deepcache",
+    "pad_x",
+    "pad_y",
+    "minimum_radius_x",
+    "minimum_radius_y",
+    "feather_sigma",
+}
 
 
 def slugify(value: str) -> str:
@@ -73,6 +98,33 @@ def resolve_project_path(context: dict[str, Any], value: str | None) -> Path | N
     return candidate.resolve()
 
 
+def resolve_runtime_path(
+    context: dict[str, Any], value: str | None, basedir: Path = DEFAULT_BASEDIR
+) -> Path | None:
+    if not value:
+        return None
+    if value.startswith("basedir:"):
+        relative = value.removeprefix("basedir:").lstrip("/")
+        return (basedir / relative).resolve()
+    return resolve_project_path(context, value)
+
+
+def bind_project_assets(context: dict[str, Any], basedir: Path) -> None:
+    """Rebind basedir: asset URIs to the CLI-selected ComfyUI basedir."""
+    for asset in context.get("asset_registry", {}).values():
+        asset["path"] = resolve_runtime_path(context, asset["path_value"], basedir)
+    presenter = context["project"]["presenter"]
+    if presenter["mode"] == "supplied":
+        context["presenter_image"] = resolve_runtime_path(
+            context, presenter["image"], basedir
+        )
+    voice = context["project"]["voice"]
+    if voice["mode"] == "supplied":
+        context["narration_audio"] = resolve_runtime_path(
+            context, voice["audio"], basedir
+        )
+
+
 def _validate_schema(payload: dict[str, Any], schema_name: str) -> None:
     schema_path = FACTORY_ROOT / "schemas" / schema_name
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
@@ -110,28 +162,81 @@ def load_project(project_file: str | Path) -> dict[str, Any]:
     content = project["content"]
     script_path = resolve_project_path(context, content.get("script_file"))
     storyboard_path = resolve_project_path(context, content.get("storyboard_file"))
+    timing_path = resolve_project_path(context, content.get("timing_file"))
     if script_path is None or not script_path.exists():
         raise FileNotFoundError(f"Script file not found: {script_path}")
     if storyboard_path is not None and not storyboard_path.exists():
         raise FileNotFoundError(f"Storyboard file not found: {storyboard_path}")
+    if timing_path is not None and not timing_path.exists():
+        raise FileNotFoundError(f"Locked timing file not found: {timing_path}")
     context["script_file"] = script_path
     context["storyboard_file"] = storyboard_path
+    context["timing_file"] = timing_path
+
+    registry = project.get("assets", {}).get("registry", {})
+    context["asset_registry"] = {
+        name: {
+            **entry,
+            "path_value": entry["path"],
+            "path": resolve_runtime_path(context, entry["path"]),
+        }
+        for name, entry in registry.items()
+    }
 
     presenter = project["presenter"]
     if presenter["mode"] == "supplied":
-        image_path = resolve_project_path(context, presenter.get("image"))
-        if image_path is None or not image_path.exists():
-            raise FileNotFoundError(f"Supplied presenter image not found: {image_path}")
+        image_path = resolve_runtime_path(context, presenter.get("image"))
+        if image_path is None:
+            raise ValueError("Supplied presenter mode requires an image path")
         context["presenter_image"] = image_path
 
     voice = project["voice"]
     if voice["mode"] == "supplied":
-        audio_path = resolve_project_path(context, voice.get("audio"))
-        if audio_path is None or not audio_path.exists():
-            raise FileNotFoundError(f"Supplied narration audio not found: {audio_path}")
+        audio_path = resolve_runtime_path(context, voice.get("audio"))
+        if audio_path is None:
+            raise ValueError("Supplied voice mode requires an audio path")
         context["narration_audio"] = audio_path
 
     return context
+
+
+def project_asset(
+    context: dict[str, Any], name: str, expected_kind: str | None = None
+) -> dict[str, Any]:
+    try:
+        asset = context.get("asset_registry", {})[name]
+    except KeyError as exc:
+        raise ValueError(f"Unknown project asset reference: {name}") from exc
+    if expected_kind and asset.get("kind") != expected_kind:
+        raise ValueError(
+            f"Project asset {name} must be {expected_kind}, not {asset.get('kind')}"
+        )
+    return asset
+
+
+def missing_project_assets(context: dict[str, Any]) -> list[str]:
+    missing = []
+    if (
+        context["project"]["presenter"]["mode"] == "supplied"
+        and not context["presenter_image"].exists()
+    ):
+        missing.append(f"presenter image: {context['presenter_image']}")
+    if (
+        context["project"]["voice"]["mode"] == "supplied"
+        and not context["narration_audio"].exists()
+    ):
+        missing.append(f"narration audio: {context['narration_audio']}")
+    for name, asset in context.get("asset_registry", {}).items():
+        path = Path(asset["path"])
+        if asset.get("required", True) and not path.exists():
+            missing.append(f"{name}: {path}")
+        elif expected := asset.get("sha256"):
+            actual = sha256_file(path)
+            if actual != expected:
+                missing.append(
+                    f"{name}: SHA-256 mismatch ({actual} != {expected})"
+                )
+    return missing
 
 
 def normalize_text(text: str) -> str:
@@ -213,6 +318,51 @@ def _storyboard_entries(context: dict[str, Any], script_text: str) -> list[dict[
                 raise ValueError("Every storyboard shot requires narration text")
             if entry.get("type", "broll") not in VALID_SHOT_TYPES:
                 raise ValueError(f"Unsupported storyboard shot type: {entry.get('type')}")
+            if asset_ref := entry.get("asset_ref"):
+                asset = project_asset(context, asset_ref)
+                if asset.get("kind") not in {"image", "video"}:
+                    raise ValueError(
+                        f"Shot asset {asset_ref} must be image or video"
+                    )
+            if pre_grade := entry.get("pre_grade"):
+                if not isinstance(pre_grade, dict):
+                    raise ValueError("Shot pre_grade must be an object")
+                unknown = set(pre_grade) - VALID_PRE_GRADE_KEYS
+                if unknown:
+                    raise ValueError(
+                        "Unsupported shot pre_grade settings: "
+                        + ", ".join(sorted(unknown))
+                    )
+                if source_crop := pre_grade.get("source_crop"):
+                    if not isinstance(source_crop, dict) or set(source_crop) != {
+                        "x",
+                        "y",
+                        "width",
+                        "height",
+                    }:
+                        raise ValueError(
+                            "Shot source_crop requires x, y, width, and height"
+                        )
+            if lip_sync_options := entry.get("lip_sync_options"):
+                if entry.get("type", "broll") != "presenter":
+                    raise ValueError(
+                        "Shot lip_sync_options are only valid for presenter shots"
+                    )
+                if not isinstance(lip_sync_options, dict):
+                    raise ValueError("Shot lip_sync_options must be an object")
+                unknown = set(lip_sync_options) - VALID_LIP_SYNC_OPTION_KEYS
+                if unknown:
+                    raise ValueError(
+                        "Unsupported shot lip_sync_options: "
+                        + ", ".join(sorted(unknown))
+                    )
+            for continuity_key in entry.get("continuity", []):
+                if continuity_key not in context["project"].get("continuity", {}).get(
+                    "prompt_tokens", {}
+                ):
+                    raise ValueError(
+                        f"Unknown continuity prompt token: {continuity_key}"
+                    )
         storyboard_text = normalize_text(" ".join(entry["narration"] for entry in entries))
         if storyboard_text != normalize_text(script_text):
             raise ValueError(
@@ -261,12 +411,24 @@ def ffprobe_duration(path: str | Path) -> float:
     return float(result.stdout.strip())
 
 
+def _continuity_prompt(context: dict[str, Any], entry: dict[str, Any]) -> str:
+    prompt_tokens = context["project"].get("continuity", {}).get("prompt_tokens", {})
+    return " ".join(
+        str(prompt_tokens[key]).strip()
+        for key in entry.get("continuity", [])
+        if prompt_tokens.get(key)
+    )
+
+
 def _build_visual_prompt(
     context: dict[str, Any], entry: dict[str, Any], shot_type: str
 ) -> str:
     project = context["project"]
+    continuity = _continuity_prompt(context, entry)
     if shot_type == "presenter":
-        return normalize_text(project["presenter"]["animation_prompt"])
+        return normalize_text(
+            f"{project['presenter']['animation_prompt']} {continuity}"
+        )
 
     subject = project["subject"]
     style = project.get("style", {})
@@ -283,8 +445,64 @@ def _build_visual_prompt(
             f" Topic: {subject['topic']}. Product or method: {subject['product']}."
         )
     return normalize_text(
-        f"{visual} {subject_context} Visual style: {style_value}. {constraints}"
+        f"{visual} {subject_context} Visual style: {style_value}. "
+        f"{continuity} {constraints}"
     )
+
+
+def _locked_timing(
+    context: dict[str, Any], entries: list[dict[str, Any]], audio_duration: float | None
+) -> tuple[list[dict[str, int | float]], float, str] | None:
+    timing_path = context.get("timing_file")
+    if timing_path is None:
+        return None
+    timing = json.loads(timing_path.read_text(encoding="utf-8"))
+    fps = int(timing["fps"])
+    if fps <= 0:
+        raise ValueError("Locked timeline fps must be positive")
+    delivery_fps = int(context["profile"]["delivery"]["fps"])
+    if fps != delivery_fps:
+        raise ValueError(
+            f"Locked timeline fps ({fps}) must match delivery fps ({delivery_fps})"
+        )
+    locked_shots = timing.get("shots", [])
+    if len(locked_shots) != len(entries):
+        raise ValueError("Locked timeline must contain exactly one entry per storyboard shot")
+
+    resolved = []
+    previous_end = 0
+    for index, (entry, locked) in enumerate(zip(entries, locked_shots), start=1):
+        expected_id = entry.get("shot_id", f"s{index:04d}")
+        if locked.get("shot_id") != expected_id:
+            raise ValueError(
+                f"Locked timeline shot {index} must be {expected_id}, "
+                f"not {locked.get('shot_id')}"
+            )
+        start_frame = int(locked["start_frame"])
+        end_frame = int(locked["end_frame"])
+        if start_frame != previous_end or end_frame <= start_frame:
+            raise ValueError("Locked timeline frames must be positive and contiguous")
+        resolved.append(
+            {
+                "start_frame": start_frame,
+                "end_frame": end_frame,
+                "frame_count": end_frame - start_frame,
+                "start": start_frame / fps,
+                "end": end_frame / fps,
+            }
+        )
+        previous_end = end_frame
+
+    total_frames = int(timing["total_frames"])
+    if previous_end != total_frames:
+        raise ValueError("Locked timeline total_frames must match its final shot")
+    total_duration = total_frames / fps
+    if audio_duration is not None and abs(audio_duration - total_duration) > 1 / fps:
+        raise ValueError(
+            "Narration differs from the locked timeline by more than one frame: "
+            f"audio={audio_duration:.3f}s timeline={total_duration:.3f}s at {fps}fps"
+        )
+    return resolved, total_duration, f"locked timeline ({fps} fps)"
 
 
 def compile_shot_manifest(
@@ -295,10 +513,16 @@ def compile_shot_manifest(
     profile = context["profile"]
     project = context["project"]
 
-    if audio_path:
-        total_duration = ffprobe_duration(audio_path)
+    audio_duration = ffprobe_duration(audio_path) if audio_path else None
+    locked_timing = _locked_timing(context, entries, audio_duration)
+    if locked_timing:
+        locked_shot_times, total_duration, timing_source = locked_timing
+    elif audio_duration is not None:
+        locked_shot_times = None
+        total_duration = audio_duration
         timing_source = "audio"
     else:
+        locked_shot_times = None
         total_duration = word_count(script_text) / float(profile["words_per_minute"]) * 60
         timing_source = "word-rate estimate"
 
@@ -311,32 +535,85 @@ def compile_shot_manifest(
         weights.append(max(1.0, word_count(narration) + punctuation_pause))
     total_weight = sum(weights)
 
-    shot_times: list[tuple[float, float]] = []
-    cursor = 0.0
-    for index, weight in enumerate(weights):
-        duration = total_duration * weight / total_weight
-        end = total_duration if index == len(weights) - 1 else cursor + duration
-        shot_times.append((cursor, end))
-        cursor = end
+    if locked_shot_times is None:
+        shot_times: list[dict[str, int | float]] = []
+        cursor = 0.0
+        for index, weight in enumerate(weights):
+            duration = total_duration * weight / total_weight
+            end = total_duration if index == len(weights) - 1 else cursor + duration
+            shot_times.append({"start": cursor, "end": end})
+            cursor = end
+    else:
+        shot_times = locked_shot_times
 
     engines = project["engines"]
+    presenter_pipeline = project["presenter"].get("pipeline")
     shots = []
-    for index, (entry, (start, end)) in enumerate(zip(entries, shot_times), start=1):
+    for index, (entry, timing) in enumerate(zip(entries, shot_times), start=1):
         shot_type = entry.get("type", "broll")
+        start = float(timing["start"])
+        end = float(timing["end"])
+        asset_ref = entry.get("asset_ref")
+        source_asset = project_asset(context, asset_ref) if asset_ref else None
+        engine = entry.get("engine", engines[shot_type])
+        if source_asset:
+            engine = "local_asset"
+        elif shot_type == "presenter" and presenter_pipeline:
+            engine = presenter_pipeline["lip_sync_engine"]
         shot = {
             "shot_id": entry.get("shot_id", f"s{index:04d}"),
             "index": index,
             "type": shot_type,
-            "engine": entry.get("engine", engines[shot_type]),
+            "engine": engine,
             "start": round(start, 3),
             "end": round(end, 3),
             "duration": round(end - start, 3),
             "narration": normalize_text(entry["narration"]),
             "prompt": _build_visual_prompt(context, entry, shot_type),
             "seed": int(entry.get("seed", int(project.get("seed", 1000)) + index)),
+            "continuity": list(entry.get("continuity", [])),
             "asset": None,
             "status": "planned",
         }
+        if "start_frame" in timing:
+            shot.update(
+                {
+                    "start_frame": int(timing["start_frame"]),
+                    "end_frame": int(timing["end_frame"]),
+                    "frame_count": int(timing["frame_count"]),
+                }
+            )
+        if entry.get("pre_grade"):
+            shot["pre_grade"] = dict(entry["pre_grade"])
+        if source_asset:
+            shot.update(
+                {
+                    "asset_ref": asset_ref,
+                    "source": "local_asset",
+                    "source_asset": str(source_asset["path"]),
+                    "source_start": float(entry.get("source_start", 0)),
+                    "source_license": source_asset.get("license", "unspecified"),
+                    "source_url": source_asset.get("source_url"),
+                    "source_expected_sha256": source_asset.get("sha256"),
+                }
+            )
+        elif shot_type == "presenter" and presenter_pipeline:
+            driving = project_asset(
+                context, presenter_pipeline["driving_asset"], expected_kind="video"
+            )
+            shot["presenter_pipeline"] = {
+                "motion_engine": presenter_pipeline["motion_engine"],
+                "lip_sync_engine": presenter_pipeline["lip_sync_engine"],
+                "driving_asset": str(driving["path"]),
+                "driving_frame_capacity": int(
+                    presenter_pipeline.get("driving_frame_capacity", 100)
+                ),
+                "fps": int(presenter_pipeline.get("fps", 25)),
+                "lip_sync_options": {
+                    **presenter_pipeline.get("lip_sync_options", {}),
+                    **entry.get("lip_sync_options", {}),
+                },
+            }
         shots.append(shot)
 
     manifest = {
@@ -346,12 +623,14 @@ def compile_shot_manifest(
         "format_profile": profile["name"],
         "project_file": str(context["project_file"]),
         "script_file": str(context["script_file"]),
+        "timing_file": str(context["timing_file"]) if context.get("timing_file") else None,
         "timing_source": timing_source,
         "narration_audio": str(Path(audio_path).resolve()) if audio_path else None,
         "duration": round(total_duration, 3),
         "word_count": word_count(script_text),
         "words_per_minute": float(profile["words_per_minute"]),
         "delivery": profile["delivery"],
+        "normalization": project.get("normalization", {}),
         "shots": shots,
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
     }
@@ -383,11 +662,17 @@ def save_state(path: Path, state: dict[str, Any]) -> None:
     write_json_atomic(path, state)
 
 
-def load_adapter(name: str) -> tuple[dict[str, Any], dict[str, Any]]:
+def load_adapter_definition(name: str) -> dict[str, Any]:
     adapter_path = FACTORY_ROOT / "adapters" / f"{name}.json"
     if not adapter_path.exists():
         raise FileNotFoundError(f"Unknown workflow adapter: {name}")
-    adapter = json.loads(adapter_path.read_text(encoding="utf-8"))
+    return json.loads(adapter_path.read_text(encoding="utf-8"))
+
+
+def load_adapter(name: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    adapter = load_adapter_definition(name)
+    if adapter.get("kind", "comfyui") != "comfyui" or not adapter.get("template"):
+        raise ValueError(f"Adapter {name} is not a ComfyUI workflow adapter")
     template_path = FACTORY_ROOT / adapter["template"]
     prompt = json.loads(template_path.read_text(encoding="utf-8"))
     return adapter, prompt
@@ -404,6 +689,8 @@ def build_adapter_prompt(name: str, values: dict[str, Any]) -> tuple[dict[str, A
 
     for slot_name, value in values.items():
         slot = adapter["slots"][slot_name]
+        if slot.get("prefix") and isinstance(value, str):
+            value = slot["prefix"] + value
         node = prompt[slot["node"]]
         node.setdefault("inputs", {})[slot["input"]] = value
     return adapter, prompt
@@ -423,8 +710,13 @@ def request_json(
         data = json.dumps(payload).encode("utf-8")
         headers["Content-Type"] = "application/json"
     request = urllib.request.Request(url, data=data, headers=headers, method=method)
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return json.load(response)
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            body = response.read()
+            return json.loads(body) if body else {}
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"ComfyUI HTTP {exc.code} for {path}: {body}") from exc
 
 
 def queue_and_wait(

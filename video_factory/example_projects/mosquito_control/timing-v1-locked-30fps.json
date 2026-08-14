@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "source": "V1 pilot shot-manifest.json; each cut rounded to the nearest 30 fps frame",
+  "reference_duration": 87.989,
+  "fps": 30,
+  "total_frames": 2640,
+  "shots": [
+    {"shot_id": "s0001", "start_frame": 0, "end_frame": 153},
+    {"shot_id": "s0002", "start_frame": 153, "end_frame": 295},
+    {"shot_id": "s0003", "start_frame": 295, "end_frame": 415},
+    {"shot_id": "s0004", "start_frame": 415, "end_frame": 561},
+    {"shot_id": "s0005", "start_frame": 561, "end_frame": 692},
+    {"shot_id": "s0006", "start_frame": 692, "end_frame": 823},
+    {"shot_id": "s0007", "start_frame": 823, "end_frame": 945},
+    {"shot_id": "s0008", "start_frame": 945, "end_frame": 1088},
+    {"shot_id": "s0009", "start_frame": 1088, "end_frame": 1220},
+    {"shot_id": "s0010", "start_frame": 1220, "end_frame": 1333},
+    {"shot_id": "s0011", "start_frame": 1333, "end_frame": 1432},
+    {"shot_id": "s0012", "start_frame": 1432, "end_frame": 1568},
+    {"shot_id": "s0013", "start_frame": 1568, "end_frame": 1699},
+    {"shot_id": "s0014", "start_frame": 1699, "end_frame": 1830},
+    {"shot_id": "s0015", "start_frame": 1830, "end_frame": 1968},
+    {"shot_id": "s0016", "start_frame": 1968, "end_frame": 2088},
+    {"shot_id": "s0017", "start_frame": 2088, "end_frame": 2253},
+    {"shot_id": "s0018", "start_frame": 2253, "end_frame": 2341},
+    {"shot_id": "s0019", "start_frame": 2341, "end_frame": 2495},
+    {"shot_id": "s0020", "start_frame": 2495, "end_frame": 2640}
+  ]
+}

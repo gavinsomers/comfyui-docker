@@ -1,0 +1,264 @@
+diff --git a/latentsync/utils/face_detector.py b/latentsync/utils/face_detector.py
+index faa55c9..78803dc 100644
+--- a/latentsync/utils/face_detector.py
++++ b/latentsync/utils/face_detector.py
+@@ -1,115 +1,52 @@
+-from insightface.app import FaceAnalysis
++"""Face Alignment + BlazeFace detector for commercial-safe local inference."""
++
++from __future__ import annotations
++
+ import numpy as np
+ import torch
+
+-INSIGHTFACE_DETECT_SIZE = 512
++from ComfyUI_LivePortraitKJ.face_alignment import FaceAlignment, LandmarksType
+
+
+ class FaceDetector:
+-    def __init__(self, device="cuda"):
+-        self.app = FaceAnalysis(
+-            allowed_modules=["detection", "landmark_2d_106"],
+-            root="checkpoints/auxiliary",
+-            providers=["CUDAExecutionProvider"],
+-        )
+-        self.app.prepare(ctx_id=cuda_to_int(device), det_size=(INSIGHTFACE_DETECT_SIZE, INSIGHTFACE_DETECT_SIZE))
++    """Return the three stable alignment points LatentSync actually consumes.
+
+-    def __call__(self, frame, threshold=0.5):
+-        f_h, f_w, _ = frame.shape
+-
+-        faces = self.app.get(frame)
++    The upstream detector uses InsightFace's pretrained 106-point model. This
++    replacement reuses the V2 presenter's BSD-licensed Face Alignment code with
++    BlazeFace and returns image-left brow, image-right brow, and nose-tip points.
++    """
+
+-        get_face_store = None
+-        max_size = 0
++    def __init__(self, device: str = "cuda"):
++        self.aligner = FaceAlignment(
++            LandmarksType.TWO_D,
++            flip_input=False,
++            device=device,
++            dtype=torch.float16 if device.startswith("cuda") else torch.float32,
++            face_detector="blazeface",
++            face_detector_kwargs={"back_model": True},
++        )
+
+-        if len(faces) == 0:
++    def __call__(self, frame: np.ndarray, threshold: float = 0.5):
++        del threshold
++        faces = self.aligner.get_landmarks_from_image(frame)
++        if not faces:
+             return None, None
+-        else:
+-            for face in faces:
+-                bbox = face.bbox.astype(np.int_).tolist()
+-                w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+-                if w < 50 or h < 80:
+-                    continue
+-                if w / h > 1.5 or w / h < 0.2:
+-                    continue
+-                if face.det_score < threshold:
+-                    continue
+-                size_now = w * h
+
+-                if size_now > max_size:
+-                    max_size = size_now
+-                    get_face_store = face
+-
+-        if get_face_store is None:
++        landmarks = max(
++            (np.asarray(face, dtype=np.float32) for face in faces),
++            key=lambda points: float(np.prod(points.max(axis=0) - points.min(axis=0))),
++        )
++        x1, y1 = np.floor(landmarks.min(axis=0)).astype(int)
++        x2, y2 = np.ceil(landmarks.max(axis=0)).astype(int)
++        if x2 - x1 < 50 or y2 - y1 < 80:
+             return None, None
+-        else:
+-            face = get_face_store
+-            lmk = np.round(face.landmark_2d_106).astype(np.int_)
+-
+-            halk_face_coord = np.mean([lmk[74], lmk[73]], axis=0)  # lmk[73]
+-
+-            sub_lmk = lmk[LMK_ADAPT_ORIGIN_ORDER]
+-            halk_face_dist = np.max(sub_lmk[:, 1]) - halk_face_coord[1]
+-            upper_bond = halk_face_coord[1] - halk_face_dist  # *0.94
+-
+-            x1, y1, x2, y2 = (np.min(sub_lmk[:, 0]), int(upper_bond), np.max(sub_lmk[:, 0]), np.max(sub_lmk[:, 1]))
+
+-            if y2 - y1 <= 0 or x2 - x1 <= 0 or x1 < 0:
+-                x1, y1, x2, y2 = face.bbox.astype(np.int_).tolist()
+-
+-            y2 += int((x2 - x1) * 0.1)
+-            x1 -= int((x2 - x1) * 0.05)
+-            x2 += int((x2 - x1) * 0.05)
+-
+-            x1 = max(0, x1)
+-            y1 = max(0, y1)
+-            x2 = min(f_w, x2)
+-            y2 = min(f_h, y2)
+-
+-            return (x1, y1, x2, y2), lmk
+-
+-
+-def cuda_to_int(cuda_str: str) -> int:
+-    """
+-    Convert the string with format "cuda:X" to integer X.
+-    """
+-    if cuda_str == "cuda":
+-        return 0
+-    device = torch.device(cuda_str)
+-    if device.type != "cuda":
+-        raise ValueError(f"Device type must be 'cuda', got: {device.type}")
+-    return device.index
+-
+-
+-LMK_ADAPT_ORIGIN_ORDER = [
+-    1,
+-    10,
+-    12,
+-    14,
+-    16,
+-    3,
+-    5,
+-    7,
+-    0,
+-    23,
+-    21,
+-    19,
+-    32,
+-    30,
+-    28,
+-    26,
+-    17,
+-    43,
+-    48,
+-    49,
+-    51,
+-    50,
+-    102,
+-    103,
+-    104,
+-    105,
+-    101,
+-    73,
+-    74,
+-    86,
+-]
++        alignment_points = np.asarray(
++            [
++                landmarks[17:22].mean(axis=0),
++                landmarks[22:27].mean(axis=0),
++                landmarks[30],
++            ],
++            dtype=np.float32,
++        )
++        return (int(x1), int(y1), int(x2), int(y2)), alignment_points
+diff --git a/latentsync/utils/image_processor.py b/latentsync/utils/image_processor.py
+index 5ac9f4e..1cd3a1d 100644
+--- a/latentsync/utils/image_processor.py
++++ b/latentsync/utils/image_processor.py
+@@ -54,17 +54,13 @@ class ImageProcessor:
+     def affine_transform(self, image: torch.Tensor) -> np.ndarray:
+         if self.face_detector is None:
+             raise NotImplementedError("Using the CPU for face detection is not supported")
+-        bbox, landmark_2d_106 = self.face_detector(image)
++        bbox, landmarks3 = self.face_detector(image)
+         if bbox is None:
+             raise RuntimeError("Face not detected")
+
+-        pt_left_eye = np.mean(landmark_2d_106[[43, 48, 49, 51, 50]], axis=0)  # left eyebrow center
+-        pt_right_eye = np.mean(landmark_2d_106[101:106], axis=0)  # right eyebrow center
+-        pt_nose = np.mean(landmark_2d_106[[74, 77, 83, 86]], axis=0)  # nose center
+-
+-        landmarks3 = np.round([pt_left_eye, pt_right_eye, pt_nose])
+-
+-        face, affine_matrix = self.restorer.align_warp_face(image.copy(), landmarks3=landmarks3, smooth=True)
++        face, affine_matrix = self.restorer.align_warp_face(
++            image.copy(), landmarks3=np.round(landmarks3), smooth=True
++        )
+         box = [0, 0, face.shape[1], face.shape[0]]  # x1, y1, x2, y2
+         face = cv2.resize(face, (self.resolution, self.resolution), interpolation=cv2.INTER_LANCZOS4)
+         face = rearrange(torch.from_numpy(face), "h w c -> c h w")
+diff --git a/scripts/inference.py b/scripts/inference.py
+index ae2ff67..b9bb1bf 100644
+--- a/scripts/inference.py
++++ b/scripts/inference.py
+@@ -14,6 +14,7 @@
+
+ import argparse
+ import os
++from pathlib import Path
+ from omegaconf import OmegaConf
+ import torch
+ from diffusers import AutoencoderKL, DDIMScheduler
+@@ -21,7 +22,10 @@ from latentsync.models.unet import UNet3DConditionModel
+ from latentsync.pipelines.lipsync_pipeline import LipsyncPipeline
+ from accelerate.utils import set_seed
+ from latentsync.whisper.audio2feature import Audio2Feature
+-from DeepCache import DeepCacheSDHelper
++try:
++    from DeepCache import DeepCacheSDHelper
++except ImportError:
++    DeepCacheSDHelper = None
+
+
+ def main(config, args):
+@@ -38,12 +42,14 @@ def main(config, args):
+     print(f"Input audio path: {args.audio_path}")
+     print(f"Loaded checkpoint path: {args.inference_ckpt_path}")
+
+-    scheduler = DDIMScheduler.from_pretrained("configs")
++    source_root = Path(__file__).resolve().parents[1]
++    checkpoint_root = Path(args.inference_ckpt_path).resolve().parent
++    scheduler = DDIMScheduler.from_pretrained(source_root / "configs")
+
+     if config.model.cross_attention_dim == 768:
+-        whisper_model_path = "checkpoints/whisper/small.pt"
++        whisper_model_path = checkpoint_root / "whisper" / "small.pt"
+     elif config.model.cross_attention_dim == 384:
+-        whisper_model_path = "checkpoints/whisper/tiny.pt"
++        whisper_model_path = checkpoint_root / "whisper" / "tiny.pt"
+     else:
+         raise NotImplementedError("cross_attention_dim must be 768 or 384")
+
+@@ -54,7 +60,7 @@ def main(config, args):
+         audio_feat_length=config.data.audio_feat_length,
+     )
+
+-    vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=dtype)
++    vae = AutoencoderKL.from_pretrained(checkpoint_root / "vae", torch_dtype=dtype)
+     vae.config.scaling_factor = 0.18215
+     vae.config.shift_factor = 0
+
+@@ -75,6 +81,8 @@ def main(config, args):
+
+     # use DeepCache
+     if args.enable_deepcache:
++        if DeepCacheSDHelper is None:
++            raise RuntimeError("DeepCache is required when --enable_deepcache is set")
+         helper = DeepCacheSDHelper(pipe=pipeline)
+         helper.set_params(cache_interval=3, cache_branch_id=0)
+         helper.enable()
+@@ -86,6 +94,10 @@ def main(config, args):
+
+     print(f"Initial seed: {torch.initial_seed()}")
+
++    mask_image_path = Path(config.data.mask_image_path)
++    if not mask_image_path.is_absolute():
++        mask_image_path = source_root / mask_image_path
++
+     pipeline(
+         video_path=args.video_path,
+         audio_path=args.audio_path,
+@@ -96,6 +108,6 @@ def main(config, args):
+         weight_dtype=dtype,
+         width=config.data.resolution,
+         height=config.data.resolution,
+-        mask_image_path=config.data.mask_image_path,
++        mask_image_path=str(mask_image_path),
+         temp_dir=args.temp_dir,
+     )

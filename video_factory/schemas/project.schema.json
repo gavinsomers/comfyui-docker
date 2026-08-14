@@ -57,6 +57,33 @@
             "minimum_mouth_motion_mean": {"type": "number", "minimum": 0},
             "minimum_mouth_motion_p95": {"type": "number", "minimum": 0}
           }
+        },
+        "pipeline": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["motion_engine", "lip_sync_engine", "driving_asset"],
+          "properties": {
+            "motion_engine": {"type": "string", "minLength": 1},
+            "lip_sync_engine": {"type": "string", "minLength": 1},
+            "driving_asset": {"type": "string", "minLength": 1},
+            "driving_frame_capacity": {"type": "integer", "minimum": 1},
+            "fps": {"type": "integer", "minimum": 1, "maximum": 60},
+            "lip_sync_options": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "mask": {"const": "mask3"},
+                "inference_steps": {"type": "integer", "minimum": 1, "maximum": 100},
+                "guidance_scale": {"type": "number", "exclusiveMinimum": 0, "maximum": 10},
+                "enable_deepcache": {"type": "boolean"},
+                "pad_x": {"type": "number", "minimum": 0},
+                "pad_y": {"type": "number", "minimum": 0},
+                "minimum_radius_x": {"type": "number", "exclusiveMinimum": 0},
+                "minimum_radius_y": {"type": "number", "exclusiveMinimum": 0},
+                "feather_sigma": {"type": "number", "exclusiveMinimum": 0}
+              }
+            }
+          }
         }
       },
       "allOf": [
@@ -98,7 +125,8 @@
       "required": ["script_file"],
       "properties": {
         "script_file": {"type": "string", "minLength": 1},
-        "storyboard_file": {"type": "string", "minLength": 1}
+        "storyboard_file": {"type": "string", "minLength": 1},
+        "timing_file": {"type": "string", "minLength": 1}
       }
     },
     "style": {
@@ -109,6 +137,81 @@
         "broll": {"type": "string"},
         "still": {"type": "string"},
         "constraints": {"type": "string"}
+      }
+    },
+    "assets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registry"],
+      "properties": {
+        "registry": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "kind"],
+            "properties": {
+              "path": {"type": "string", "minLength": 1},
+              "kind": {"enum": ["image", "video", "audio", "lut"]},
+              "required": {"type": "boolean"},
+              "license": {"type": "string"},
+              "source_url": {"type": "string"},
+              "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+            }
+          }
+        }
+      }
+    },
+    "continuity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "prompt_tokens": {
+          "type": "object",
+          "additionalProperties": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "normalization": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pre_grade": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "fps_method": {"enum": ["duplicate", "blend"]},
+            "denoise": {"type": "number", "minimum": 0},
+            "sharpen": {"type": "number", "minimum": -2, "maximum": 2},
+            "contrast": {"type": "number", "minimum": 0},
+            "brightness": {"type": "number", "minimum": -1, "maximum": 1},
+            "saturation": {"type": "number", "minimum": 0},
+            "gamma": {"type": "number", "exclusiveMinimum": 0, "maximum": 10},
+            "blue_shadows": {"type": "number", "minimum": -1, "maximum": 1},
+            "blue_midtones": {"type": "number", "minimum": -1, "maximum": 1},
+            "blue_highlights": {"type": "number", "minimum": -1, "maximum": 1},
+            "source_crop": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["x", "y", "width", "height"],
+              "properties": {
+                "x": {"type": "integer", "minimum": 0},
+                "y": {"type": "integer", "minimum": 0},
+                "width": {"type": "integer", "minimum": 1},
+                "height": {"type": "integer", "minimum": 1}
+              }
+            }
+          }
+        },
+        "final_grade": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "lut_path": {"type": "string"},
+            "warmth": {"type": "number", "minimum": -1, "maximum": 1},
+            "grain": {"type": "number", "minimum": 0}
+          }
+        }
       }
     },
     "engines": {

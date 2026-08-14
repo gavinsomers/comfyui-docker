@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "status": "assembled",
+  "assembled_at": "2026-08-14T10:52:19+01:00",
+  "project": "mosquito-control-pilot-v2",
+  "delivery": {
+    "path": "basedir/output/video_factory/mosquito-control-pilot-v2/mosquito-control-pilot-v2-1080p.mp4",
+    "sha256": "020758c26e7f03ffb3c895b667cb57da61e7201331afff8d95f5e26d142aeecd",
+    "size_bytes": 51660930,
+    "duration_seconds": 88.0,
+    "video": {
+      "codec": "h264",
+      "width": 1920,
+      "height": 1080,
+      "fps": 30,
+      "frames": 2640
+    },
+    "audio": {
+      "codec": "aac",
+      "sample_rate": 96000,
+      "channels": 1,
+      "mean_volume_db": -17.1,
+      "maximum_volume_db": -1.2,
+      "silence_over_two_seconds_detected": false
+    },
+    "full_decode": "pass"
+  },
+  "inputs": {
+    "shot_manifest_sha256": "b85875e20af02f7edf242029971933f8298b997e0c6a0367212b9d151a5a9e89",
+    "runtime_state_sha256": "2817625ac9abeca98bc9e0323c9f369bb3d9709bfb5ab9106a5a26e3e234fe02",
+    "presenter_qa_sha256": "dd8204b32b590d4a6e158fe66b6cc8cb8b989f5744cc1980227069dbb36e0df1",
+    "captions_sha256": "06d3384dc9992da86fa6bdaebf15cd94ea2795cf75777978f97a480f40e281cd"
+  },
+  "human_qa": {
+    "presenter_shots": {
+      "status": "pass",
+      "shots": [
+        "s0003",
+        "s0007",
+        "s0011",
+        "s0016",
+        "s0019"
+      ],
+      "s0007_selection": {
+        "candidate": "option-B-feather-only",
+        "approved_proof_sha256": "a9214a4fd08d6fe0ff302fd72bf35af37d3ad1670c73810c11c875426f5c2888",
+        "notes": "Gavin selected option B. The softer 5.5px feather resolves left face edge ringing while preserving stable lighting and skin texture."
+      }
+    },
+    "corrected_broll": {
+      "status": "pass",
+      "shots": [
+        "s0002",
+        "s0006",
+        "s0008",
+        "s0009",
+        "s0013",
+        "s0014",
+        "s0017",
+        "s0020"
+      ],
+      "notes": "Gavin approved bucket consistency, macro grading, pouring motion, and corrected framing in the dedicated playback reel."
+    }
+  },
+  "technical_qa": {
+    "project_validation": "pass",
+    "rendered_shots": "20/20",
+    "presenter_gate": "pass",
+    "timeline_frame_contract": "pass",
+    "full_delivery_decode": "pass",
+    "final_contact_sheet": "basedir/output/video_factory/mosquito-control-pilot-v2/qa/final-delivery-contact-sheet.png"
+  },
+  "generated_media_committed": false
+}
