@@ -43,6 +43,7 @@ from spider.userscripts_dir.latentsync16_deps import (
     SOURCE_COMMIT as LATENTSYNC_SOURCE_COMMIT,
     TARGET_IMPORTS as LATENTSYNC_TARGET_IMPORTS,
     TARGET_REQUIREMENTS as LATENTSYNC_TARGET_REQUIREMENTS,
+    _install_target_requirements as install_latentsync_target_requirements,
     target_requirements_satisfied as latentsync_target_requirements_satisfied,
 )
 from spider.userscripts_dir.video_factory_v2_deps import (
@@ -793,6 +794,24 @@ class PresenterBenchmarkDependencyTests(unittest.TestCase):
 
 
 class VideoFactoryV2DependencyTests(unittest.TestCase):
+    @staticmethod
+    def _write_latentsync_dependencies(target: Path) -> None:
+        for requirement, module in zip(
+            LATENTSYNC_TARGET_REQUIREMENTS,
+            LATENTSYNC_TARGET_IMPORTS,
+        ):
+            name, expected_version = requirement.split("==", 1)
+            (target / module).mkdir()
+            (target / module / "__init__.py").write_text("", encoding="utf-8")
+            metadata = target / (
+                name.replace("-", "_") + f"-{expected_version}.dist-info"
+            )
+            metadata.mkdir()
+            (metadata / "METADATA").write_text(
+                f"Metadata-Version: 2.1\nName: {name}\nVersion: {expected_version}\n",
+                encoding="utf-8",
+            )
+
     def test_v2_dependency_contract_pins_approved_liveportrait_provider(self):
         self.assertEqual(set(V2_CUSTOM_NODE_PROVIDERS), {"ComfyUI-LivePortraitKJ"})
         self.assertEqual(
@@ -868,21 +887,7 @@ class VideoFactoryV2DependencyTests(unittest.TestCase):
     def test_latentsync_isolated_dependencies_require_exact_distributions(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             target = Path(temp_dir)
-            for requirement, module in zip(
-                LATENTSYNC_TARGET_REQUIREMENTS,
-                LATENTSYNC_TARGET_IMPORTS,
-            ):
-                name, expected_version = requirement.split("==", 1)
-                (target / module).mkdir()
-                (target / module / "__init__.py").write_text("", encoding="utf-8")
-                metadata = target / (
-                    name.replace("-", "_") + f"-{expected_version}.dist-info"
-                )
-                metadata.mkdir()
-                (metadata / "METADATA").write_text(
-                    f"Metadata-Version: 2.1\nName: {name}\nVersion: {expected_version}\n",
-                    encoding="utf-8",
-                )
+            self._write_latentsync_dependencies(target)
 
             self.assertTrue(latentsync_target_requirements_satisfied(target))
             metadata = next(target.glob("omegaconf-*.dist-info/METADATA"))
@@ -891,6 +896,54 @@ class VideoFactoryV2DependencyTests(unittest.TestCase):
                 encoding="utf-8",
             )
             self.assertFalse(latentsync_target_requirements_satisfied(target))
+
+    def test_latentsync_dependency_repair_replaces_stale_target(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = Path(temp_dir)
+            target = runtime / "pydeps"
+            target.mkdir()
+            self._write_latentsync_dependencies(target)
+            stale = target / "omegaconf-1.0.0.dist-info"
+            stale.mkdir()
+            (stale / "METADATA").write_text(
+                "Metadata-Version: 2.1\nName: omegaconf\nVersion: 1.0.0\n",
+                encoding="utf-8",
+            )
+
+            def install_into_clean_target(command, check):
+                self.assertTrue(check)
+                install_target = Path(command[command.index("--target") + 1])
+                self.assertEqual(list(install_target.iterdir()), [])
+                self._write_latentsync_dependencies(install_target)
+                return subprocess.CompletedProcess(command, 0)
+
+            with patch(
+                "spider.userscripts_dir.latentsync16_deps.subprocess.run",
+                side_effect=install_into_clean_target,
+            ):
+                install_latentsync_target_requirements(runtime)
+
+            self.assertFalse((target / "omegaconf-1.0.0.dist-info").exists())
+            self.assertTrue(latentsync_target_requirements_satisfied(target))
+
+    def test_latentsync_dependency_repair_rejects_incomplete_install(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = Path(temp_dir)
+            target = runtime / "pydeps"
+            target.mkdir()
+            (target / "stale-package.py").write_text("", encoding="utf-8")
+
+            with patch(
+                "spider.userscripts_dir.latentsync16_deps.subprocess.run",
+                return_value=subprocess.CompletedProcess([], 0),
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "pinned dependency validation failed",
+                ):
+                    install_latentsync_target_requirements(runtime)
+
+            self.assertTrue((target / "stale-package.py").exists())
 
 
 class NarrationConformanceTests(unittest.TestCase):

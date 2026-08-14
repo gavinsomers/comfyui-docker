@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Sequence
 
@@ -205,21 +206,32 @@ def _install_target_requirements(runtime: Path) -> None:
     target = runtime / "pydeps"
     if target_requirements_satisfied(target):
         return
-    target.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "--upgrade",
-            "--target",
-            str(target),
-            "--no-deps",
-            *TARGET_REQUIREMENTS,
-        ],
-        check=True,
-    )
+    if target.is_symlink() or (target.exists() and not target.is_dir()):
+        raise RuntimeError(f"Refusing to replace invalid pydeps target: {target}")
+    runtime.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".pydeps-", dir=runtime) as temp_dir:
+        clean_target = Path(temp_dir)
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--upgrade",
+                "--target",
+                str(clean_target),
+                "--no-deps",
+                *TARGET_REQUIREMENTS,
+            ],
+            check=True,
+        )
+        if not target_requirements_satisfied(clean_target):
+            raise RuntimeError(
+                "LatentSync pinned dependency validation failed after install"
+            )
+        if target.exists():
+            shutil.rmtree(target)
+        clean_target.replace(target)
 
 
 def _download_models(runtime: Path) -> None:
