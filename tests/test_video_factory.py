@@ -897,6 +897,19 @@ class VideoFactoryV2DependencyTests(unittest.TestCase):
             )
             self.assertFalse(latentsync_target_requirements_satisfied(target))
 
+    def test_latentsync_isolated_dependencies_reject_unexpected_distributions(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir)
+            self._write_latentsync_dependencies(target)
+            metadata = target / "unapproved_helper-1.0.0.dist-info"
+            metadata.mkdir()
+            (metadata / "METADATA").write_text(
+                "Metadata-Version: 2.1\nName: unapproved.helper\nVersion: 1.0.0\n",
+                encoding="utf-8",
+            )
+
+            self.assertFalse(latentsync_target_requirements_satisfied(target))
+
     def test_latentsync_dependency_repair_replaces_stale_target(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             runtime = Path(temp_dir)
@@ -926,16 +939,28 @@ class VideoFactoryV2DependencyTests(unittest.TestCase):
             self.assertFalse((target / "omegaconf-1.0.0.dist-info").exists())
             self.assertTrue(latentsync_target_requirements_satisfied(target))
 
-    def test_latentsync_dependency_repair_rejects_incomplete_install(self):
+    def test_latentsync_dependency_repair_rejects_unapproved_staged_install(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             runtime = Path(temp_dir)
             target = runtime / "pydeps"
             target.mkdir()
             (target / "stale-package.py").write_text("", encoding="utf-8")
 
+            def install_with_extra_distribution(command, check):
+                self.assertTrue(check)
+                install_target = Path(command[command.index("--target") + 1])
+                self._write_latentsync_dependencies(install_target)
+                metadata = install_target / "unapproved_helper-1.0.0.dist-info"
+                metadata.mkdir()
+                (metadata / "METADATA").write_text(
+                    "Metadata-Version: 2.1\nName: unapproved-helper\nVersion: 1.0.0\n",
+                    encoding="utf-8",
+                )
+                return subprocess.CompletedProcess(command, 0)
+
             with patch(
                 "spider.userscripts_dir.latentsync16_deps.subprocess.run",
-                return_value=subprocess.CompletedProcess([], 0),
+                side_effect=install_with_extra_distribution,
             ):
                 with self.assertRaisesRegex(
                     RuntimeError,

@@ -99,6 +99,8 @@ def target_requirements_satisfied(target: Path) -> bool:
             continue
         normalized = re.sub(r"[-_.]+", "-", name).casefold()
         installed_versions.setdefault(normalized, set()).add(distribution.version)
+    if set(installed_versions) != set(expected_versions):
+        return False
     if any(
         installed_versions.get(name) != {version}
         for name, version in expected_versions.items()
