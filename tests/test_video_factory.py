@@ -20,6 +20,7 @@ from scripts.video_factory import (
     create_assembly_clip,
     narration_path,
     presenter_qa_failures,
+    record_supplied_asset,
     render_narration,
 )
 from scripts.presenter_benchmark import ENGINE_SETTINGS, preflight_longcat_nodes
@@ -42,12 +43,19 @@ from spider.userscripts_dir.latentsync16_deps import (
     SOURCE_COMMIT as LATENTSYNC_SOURCE_COMMIT,
     TARGET_IMPORTS as LATENTSYNC_TARGET_IMPORTS,
     TARGET_REQUIREMENTS as LATENTSYNC_TARGET_REQUIREMENTS,
+    target_requirements_satisfied as latentsync_target_requirements_satisfied,
 )
 from spider.userscripts_dir.video_factory_v2_deps import (
     CUSTOM_NODE_PROVIDERS as V2_CUSTOM_NODE_PROVIDERS,
     IMPORTS as V2_IMPORTS,
+    LANDMARK_FILENAME,
+    LANDMARK_REPOSITORY,
+    LANDMARK_REVISION,
+    LANDMARK_SHA256,
     REQUIREMENTS as V2_REQUIREMENTS,
     custom_node_provider_failures as v2_custom_node_provider_failures,
+    ensure_landmark_model,
+    landmark_model_failure,
     missing_registered_nodes as v2_missing_registered_nodes,
 )
 from video_factory.core import (
@@ -809,6 +817,43 @@ class VideoFactoryV2DependencyTests(unittest.TestCase):
         self.assertNotIn("VideoFactoryUNETLoaderMuseTalk", missing)
         self.assertNotIn("muse_talk_sampler", missing)
 
+    def test_liveportrait_landmark_contract_pins_and_verifies_the_artifact(self):
+        self.assertEqual(LANDMARK_REPOSITORY, "Kijai/LivePortrait_safetensors")
+        self.assertEqual(
+            LANDMARK_REVISION,
+            "59f30f36d7b791929c25437df7461d5b0e0010b1",
+        )
+        self.assertEqual(LANDMARK_FILENAME, "landmark.onnx")
+        self.assertEqual(
+            LANDMARK_SHA256,
+            "31d22a5041326c31f19b78886939a634a5aedcaa5ab8b9b951a1167595d147db",
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            corrupt = Path(temp_dir) / LANDMARK_FILENAME
+            corrupt.write_bytes(b"not the approved model")
+            failure = landmark_model_failure(corrupt)
+
+        self.assertIn("SHA-256", failure)
+        self.assertIn(LANDMARK_SHA256, failure)
+
+    def test_liveportrait_landmark_download_is_verified_before_replacement(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target = root / "models" / "liveportrait" / LANDMARK_FILENAME
+            target.parent.mkdir(parents=True)
+            target.write_bytes(b"existing model")
+            downloaded = root / "downloaded.onnx"
+            downloaded.write_bytes(b"corrupt download")
+
+            with patch(
+                "spider.userscripts_dir.video_factory_v2_deps._download_landmark",
+                return_value=downloaded,
+            ):
+                with self.assertRaisesRegex(RuntimeError, "SHA-256"):
+                    ensure_landmark_model(root / "models")
+
+            self.assertEqual(target.read_bytes(), b"existing model")
+
     def test_latentsync_dependency_contract_is_immutable_and_bounded(self):
         self.assertEqual(LATENTSYNC_SOURCE_COMMIT, "a229c3948406bc2cf6eaf4873e662e70c6a04746")
         self.assertEqual(LATENTSYNC_MODEL_REVISION, "c42c7e6c8e9c213626389fa7d9a3c444b8536353")
@@ -819,6 +864,33 @@ class VideoFactoryV2DependencyTests(unittest.TestCase):
             LATENTSYNC_EXPECTED_FILES["stage2_512-mask3.yaml"],
             LATENTSYNC_RUNTIME_CONTRACT["config_sha256"],
         )
+
+    def test_latentsync_isolated_dependencies_require_exact_distributions(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir)
+            for requirement, module in zip(
+                LATENTSYNC_TARGET_REQUIREMENTS,
+                LATENTSYNC_TARGET_IMPORTS,
+            ):
+                name, expected_version = requirement.split("==", 1)
+                (target / module).mkdir()
+                (target / module / "__init__.py").write_text("", encoding="utf-8")
+                metadata = target / (
+                    name.replace("-", "_") + f"-{expected_version}.dist-info"
+                )
+                metadata.mkdir()
+                (metadata / "METADATA").write_text(
+                    f"Metadata-Version: 2.1\nName: {name}\nVersion: {expected_version}\n",
+                    encoding="utf-8",
+                )
+
+            self.assertTrue(latentsync_target_requirements_satisfied(target))
+            metadata = next(target.glob("omegaconf-*.dist-info/METADATA"))
+            metadata.write_text(
+                "Metadata-Version: 2.1\nName: omegaconf\nVersion: 9.9.9\n",
+                encoding="utf-8",
+            )
+            self.assertFalse(latentsync_target_requirements_satisfied(target))
 
 
 class NarrationConformanceTests(unittest.TestCase):
@@ -845,7 +917,55 @@ class NarrationConformanceTests(unittest.TestCase):
         command = run.call_args.args[0]
         video_filter = command[command.index("-filter_complex") + 1]
         self.assertIn("reverse", video_filter)
+        self.assertIn("loop=loop=-1:size=32767:start=0", video_filter)
         self.assertIn("trim=end_frame=129", video_filter)
+
+    def test_presenter_driving_repeats_ping_pong_to_requested_frame_count(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source.mp4"
+            target = root / "extended.mp4"
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=size=64x64:rate=5",
+                    "-frames:v",
+                    "3",
+                    "-pix_fmt",
+                    "yuv420p",
+                    str(source),
+                ],
+                check=True,
+            )
+
+            conform_presenter_driving(source, target, frame_count=20, fps=5)
+            result = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-count_frames",
+                    "-select_streams",
+                    "v:0",
+                    "-show_entries",
+                    "stream=nb_read_frames",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    str(target),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertEqual(int(result.stdout.strip()), 20)
 
     def test_atempo_filter_supports_rates_above_ffmpeg_single_filter_limit(self):
         self.assertEqual(_atempo_filter(4.0), "atempo=2.00000000,atempo=2.00000000")
@@ -1003,6 +1123,39 @@ class AssemblyTests(unittest.TestCase):
             final_command[final_command.index("-af") + 1],
             "loudnorm=I=-16:TP=-1.5:LRA=11,apad",
         )
+
+    def test_supplied_asset_checksum_is_enforced_when_recorded_and_assembled(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            context, manifest, state, paths, asset = self._fixture(root)
+            expected = sha256_file(asset)
+
+            record = record_supplied_asset(
+                asset,
+                "shot",
+                {"source_expected_sha256": expected},
+            )
+            self.assertEqual(record["source_sha256"], expected)
+
+            with self.assertRaisesRegex(ValueError, "SHA-256"):
+                record_supplied_asset(
+                    asset,
+                    "shot",
+                    {"source_expected_sha256": "0" * 64},
+                )
+
+            manifest["shots"][0]["source_expected_sha256"] = expected
+            asset.write_bytes(b"replacement after approval")
+            with patch("scripts.video_factory.subprocess.run") as run:
+                with self.assertRaisesRegex(ValueError, "s0001.*SHA-256"):
+                    assemble_project(
+                        context,
+                        manifest,
+                        state,
+                        paths,
+                        overwrite=False,
+                    )
+            run.assert_not_called()
 
     def test_pre_grade_normalization_and_stock_inpoint_reach_ffmpeg(self):
         with tempfile.TemporaryDirectory() as temp_dir:

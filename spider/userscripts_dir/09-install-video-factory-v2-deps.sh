@@ -47,27 +47,8 @@ else
     || error_exit "V2 LivePortrait dependency verification failed"
 fi
 
-LANDMARK_PATH="$MODELS_DIR/liveportrait/landmark.onnx"
-if [ ! -s "$LANDMARK_PATH" ]; then
-  echo "== Downloading the LivePortrait ONNX landmark model =="
-  LANDMARK_PATH="$LANDMARK_PATH" python3 - <<'PY'
-import os
-import shutil
-from pathlib import Path
-from huggingface_hub import hf_hub_download
-
-target = Path(os.environ["LANDMARK_PATH"])
-target.parent.mkdir(parents=True, exist_ok=True)
-source = hf_hub_download(
-    repo_id="Kijai/LivePortrait_safetensors",
-    filename="landmark.onnx",
-)
-temporary = target.with_suffix(target.suffix + ".tmp")
-shutil.copy2(source, temporary)
-temporary.replace(target)
-PY
-fi
-[ -s "$LANDMARK_PATH" ] || error_exit "LivePortrait landmark model is missing after download"
+python3 "$SCRIPT_DIR/video_factory_v2_deps.py" ensure-landmark "$MODELS_DIR" \
+  || error_exit "LivePortrait landmark model verification failed"
 
 if python3 "$SCRIPT_DIR/latentsync16_deps.py" check "$LATENTSYNC_RUNTIME" >/dev/null 2>&1; then
   echo "== Pinned LatentSync 1.6 runtime already installed =="

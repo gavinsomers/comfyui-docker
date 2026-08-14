@@ -84,15 +84,28 @@ def record_supplied_asset(
     path: Path, kind: str, metadata: dict[str, Any] | None = None
 ) -> dict[str, Any]:
     details = metadata or {}
+    source_sha256 = _verify_expected_sha256(
+        path,
+        details.get("source_expected_sha256"),
+        f"Supplied {kind} asset {path}",
+    )
     return {
         "status": "supplied",
         "kind": kind,
         "output_path": str(path.resolve()),
+        "source_sha256": source_sha256,
         "cache_key": stable_hash(
-            {"kind": kind, "sha256": sha256_file(path), "metadata": details}
+            {"kind": kind, "sha256": source_sha256, "metadata": details}
         ),
         **details,
     }
+
+
+def _verify_expected_sha256(path: Path, expected: str | None, label: str) -> str:
+    actual = sha256_file(path)
+    if expected and actual.casefold() != expected.casefold():
+        raise ValueError(f"{label} SHA-256 is {actual}, expected {expected}")
+    return actual
 
 
 def render_with_cache(
@@ -262,7 +275,7 @@ def conform_presenter_driving(
     cache_path = target.with_suffix(".cache.json")
     cache_key = stable_hash(
         {
-            "algorithm": "forward-reverse-loop-v1",
+            "algorithm": "forward-reverse-loop-v2",
             "source_sha256": sha256_file(source),
             "frame_count": int(frame_count),
             "fps": int(fps),
@@ -276,7 +289,9 @@ def conform_presenter_driving(
     video_filter = (
         f"[0:v]fps={fps},split=2[forward][backward];"
         "[backward]reverse[reversed];"
-        f"[forward][reversed]concat=n=2:v=1:a=0,trim=end_frame={frame_count},"
+        "[forward][reversed]concat=n=2:v=1:a=0,"
+        "loop=loop=-1:size=32767:start=0,"
+        f"trim=end_frame={frame_count},"
         f"setpts=N/({fps}*TB)[video]"
     )
     subprocess.run(
@@ -1164,6 +1179,11 @@ def assemble_project(
     for shot in manifest["shots"]:
         clip = paths["clips"] / f"{shot['index']:04d}-{shot['shot_id']}.mp4"
         asset = Path(shot["asset"])
+        source_sha256 = _verify_expected_sha256(
+            asset,
+            shot.get("source_expected_sha256"),
+            f"Shot {shot['shot_id']} asset {asset}",
+        )
         cache_record_path = clip.with_suffix(".cache.json")
         shot_pre_grade = {**global_pre_grade, **shot.get("pre_grade", {})}
         duration = (
@@ -1173,7 +1193,7 @@ def assemble_project(
         )
         cache_key = stable_hash(
             {
-                "source_sha256": sha256_file(asset),
+                "source_sha256": source_sha256,
                 "source_start": float(shot.get("source_start", 0)),
                 "duration": duration,
                 "width": width,

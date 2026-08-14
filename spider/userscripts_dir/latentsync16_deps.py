@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import hashlib
-import importlib.util
+import importlib.machinery
+import importlib.metadata
+import re
 import shutil
 import subprocess
 import sys
@@ -85,17 +87,30 @@ def _repository_identity(value: str) -> str:
 def target_requirements_satisfied(target: Path) -> bool:
     if not target.is_dir():
         return False
-    original = list(sys.path)
-    sys.path.insert(0, str(target))
-    try:
-        for module in TARGET_IMPORTS:
-            spec = importlib.util.find_spec(module)
-            if spec is None or not spec.origin:
-                return False
-            if not Path(spec.origin).resolve().is_relative_to(target.resolve()):
-                return False
-    finally:
-        sys.path[:] = original
+    expected_versions = {
+        re.sub(r"[-_.]+", "-", name).casefold(): version
+        for name, version in (requirement.split("==", 1) for requirement in TARGET_REQUIREMENTS)
+    }
+    installed_versions: dict[str, set[str]] = {}
+    for distribution in importlib.metadata.distributions(path=[str(target)]):
+        name = distribution.metadata.get("Name")
+        if not name:
+            continue
+        normalized = re.sub(r"[-_.]+", "-", name).casefold()
+        installed_versions.setdefault(normalized, set()).add(distribution.version)
+    if any(
+        installed_versions.get(name) != {version}
+        for name, version in expected_versions.items()
+    ):
+        return False
+
+    resolved_target = target.resolve()
+    for module in TARGET_IMPORTS:
+        spec = importlib.machinery.PathFinder.find_spec(module, [str(target)])
+        if spec is None or not spec.origin:
+            return False
+        if not Path(spec.origin).resolve().is_relative_to(resolved_target):
+            return False
     return True
 
 

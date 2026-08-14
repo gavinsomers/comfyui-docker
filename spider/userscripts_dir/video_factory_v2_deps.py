@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib
+import shutil
 import subprocess
 import sys
 from importlib.metadata import PackageNotFoundError, version
@@ -47,6 +49,58 @@ CUSTOM_NODE_PROVIDERS = {
         ),
     },
 }
+LANDMARK_REPOSITORY = "Kijai/LivePortrait_safetensors"
+LANDMARK_REVISION = "59f30f36d7b791929c25437df7461d5b0e0010b1"
+LANDMARK_FILENAME = "landmark.onnx"
+LANDMARK_SHA256 = "31d22a5041326c31f19b78886939a634a5aedcaa5ab8b9b951a1167595d147db"
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(16 * 1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def landmark_model_failure(path: Path) -> str | None:
+    if not path.is_file():
+        return f"LivePortrait landmark model is missing: {path}"
+    actual = sha256_file(path)
+    if actual != LANDMARK_SHA256:
+        return f"LivePortrait landmark model SHA-256 is {actual}, expected {LANDMARK_SHA256}"
+    return None
+
+
+def _download_landmark() -> Path:
+    from huggingface_hub import hf_hub_download
+
+    return Path(
+        hf_hub_download(
+            repo_id=LANDMARK_REPOSITORY,
+            filename=LANDMARK_FILENAME,
+            revision=LANDMARK_REVISION,
+        )
+    )
+
+
+def ensure_landmark_model(models_dir: str | Path) -> Path:
+    target = Path(models_dir) / "liveportrait" / LANDMARK_FILENAME
+    if landmark_model_failure(target) is None:
+        return target
+
+    source = _download_landmark()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_suffix(target.suffix + ".tmp")
+    try:
+        shutil.copy2(source, temporary)
+        failure = landmark_model_failure(temporary)
+        if failure:
+            raise RuntimeError(f"Downloaded {failure}")
+        temporary.replace(target)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return target
 
 
 def requirements_satisfied(
@@ -177,9 +231,17 @@ def main(argv: Sequence[str]) -> int:
             print(format_provider_failures(failures, argv[1]), file=sys.stderr)
             return 1
         return 0
+    if len(argv) == 2 and argv[0] == "ensure-landmark":
+        target = ensure_landmark_model(argv[1])
+        failure = landmark_model_failure(target)
+        if failure:
+            print(failure, file=sys.stderr)
+            return 1
+        print(f"LivePortrait landmark model ready: {target}")
+        return 0
     raise SystemExit(
         "usage: video_factory_v2_deps.py "
-        "{check|requirements|check-nodes CUSTOM_NODES_DIR}"
+        "{check|requirements|check-nodes CUSTOM_NODES_DIR|ensure-landmark MODELS_DIR}"
     )
 
 
