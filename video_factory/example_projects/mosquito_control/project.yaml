@@ -1,56 +1,114 @@
 version: 1
 seed: 509000
 project:
-  slug: mosquito-control-pilot
-  title: A Better Backyard Mosquito Routine
-profile: authority_explainer_v1
+  slug: mosquito-control-pilot-v2
+  title: A Better Backyard Mosquito Routine — V2
+profile: authority_explainer_v2
 subject:
   topic: practical backyard mosquito source reduction
   product: a correctly labelled BTI mosquito-control product
   environment: a modest green rural American homestead in summer
   audience: homeowners who want a pollinator-conscious mosquito routine
 presenter:
-  mode: generated
-  image_engine: z_image_turbo
+  mode: supplied
+  image: basedir:input/video_factory/mosquito-control-pilot-v2/references/presenter-close.png
   seed: 509001
-  image_prompt: >-
-    Realistic chest-up documentary portrait of an original fictional male rural
-    homesteader in his late forties, with a long dark beard, strong eyebrows,
-    weathered but friendly face, plain white collarless work shirt, black
-    suspenders, and a simple natural straw hat. He faces the camera inside a
-    modest traditional farmhouse room with cream walls, dark wooden trim, one
-    bright window on each side, and soft natural daylight. Symmetrical
-    eye-level framing, 16:9 landscape composition, ordinary consumer-camera
-    realism, restrained colour, stable simple background. This is an invented
-    person and must not resemble a public figure. No text, logos, watermarks,
-    extra people, or objects covering the face.
   animation_prompt: >-
-    The same fictional rural homesteader from the input portrait speaks
-    directly to camera in a chest-up composition. Natural lip movement follows
-    the supplied narration, with restrained blinking, tiny head movements, and
-    modest facial expression. Preserve his exact face, beard, straw hat, white
-    shirt, suspenders, room, lighting, and camera distance. Locked-off camera,
-    no cuts, no zoom, no hand gestures entering frame, no subtitles, no text,
-    no logos, and no identity change.
+    The exact fictional rural homesteader from the supplied canonical portrait
+    remains in a chest-up composition. Preserve his face, long dark beard,
+    simple natural straw hat, plain white collarless linen work shirt, black
+    suspenders, room, lighting, and camera distance. Use restrained blinking,
+    tiny head movements, and modest upper-face expression. Keep the lower face
+    stable for the final audio-driven lip-sync pass. Locked-off camera, no cuts,
+    no zoom, no hand gestures entering frame, no subtitles, no text, no logos,
+    and no identity change.
+  pipeline:
+    motion_engine: liveportrait_motion
+    lip_sync_engine: latentsync16_mouthrestore
+    driving_asset: presenter_driving
+    driving_frame_capacity: 100
+    fps: 25
+    lip_sync_options:
+      mask: mask3
+      inference_steps: 20
+      guidance_scale: 1.5
+      enable_deepcache: false
+      pad_x: 11.0
+      pad_y: 12.0
+      minimum_radius_x: 37.0
+      minimum_radius_y: 22.0
+      feather_sigma: 4.0
   qa:
     sample_fps: 12
-    minimum_mouth_motion_mean: 5.0
-    minimum_mouth_motion_p95: 9.0
+    minimum_mouth_motion_mean: 3.0
+    minimum_mouth_motion_p95: 6.0
 voice:
-  mode: custom_voice
+  mode: supplied
   engine: qwen3_custom_voice
-  speaker: Ryan
-  language: English
-  seed: 509002
-  target_words_per_minute: 163
-  max_new_tokens: 8192
-  instruct: >-
-    Calm, practical American documentary narration from a middle-aged man.
-    Conversational and trustworthy, with clear emphasis and no exaggerated
-    sales delivery. Maintain an efficient pace near 160 words per minute.
+  audio: basedir:output/video_factory/mosquito-control-pilot/narration/conformed.wav
 content:
   script_file: script.md
   storyboard_file: storyboard.yaml
+  timing_file: timing-v1-locked-30fps.json
+assets:
+  registry:
+    presenter_driving:
+      path: basedir:input/video_factory/mosquito-control-pilot-v2/references/subtle-driving.mp4
+      kind: video
+      license: locally generated V1 pilot asset
+    approved_s0006_murky_water:
+      path: basedir:input/video_factory/mosquito-control-pilot-v2/approved/s0006-murky-water.png
+      kind: image
+      license: locally generated V2 corrective asset
+      sha256: 3d46f883a2914680b52bb375602fd18bd4d5c6f6492d03d4d2a444d3f0538609
+    approved_s0013_covered_bucket:
+      path: basedir:input/video_factory/mosquito-control-pilot-v2/approved/s0013-covered-bucket.png
+      kind: image
+      license: locally generated V2 corrective asset
+      sha256: 03550e35a342634b0cc0033617783bcd59eb8f1939f1af4de698e681fde0a551
+    stock_mosquito_adult:
+      path: basedir:input/video_factory/mosquito-control-pilot-v2/stock/mosquito-adult.mp4
+      kind: video
+      license: public domain
+      source_url: https://commons.wikimedia.org/wiki/File:Mosquito-aedes-aegypti-high-res.webm
+    stock_mosquito_larvae:
+      path: basedir:input/video_factory/mosquito-control-pilot-v2/stock/mosquito-larvae.mp4
+      kind: video
+      license: public domain
+      source_url: https://commons.wikimedia.org/wiki/File:Mosquito-aedes-aegypti-high-res.webm
+    stock_bees_hibiscus:
+      path: basedir:input/video_factory/mosquito-control-pilot-v2/stock/bees-hibiscus.mp4
+      kind: video
+      license: CC0
+      source_url: https://commons.wikimedia.org/wiki/File:Bees_on_Hibiscus_syriacus.webm
+    stock_bees_meadow:
+      path: basedir:input/video_factory/mosquito-control-pilot-v2/stock/bees-meadow.mp4
+      kind: video
+      license: public domain
+      source_url: https://commons.wikimedia.org/wiki/File:Flowers_(20210715-FPAC-KLS-0002).webm
+continuity:
+  prompt_tokens:
+    presenter: >-
+      Canonical host wardrobe: simple natural straw hat, long dark beard, plain
+      white collarless linen work shirt, and black suspenders. No modern jacket,
+      plaid shirt, shorts, sweater, bucket hat, or wardrobe change. Keep the
+      host's face outside frame in action B-roll.
+    bucket: >-
+      The only trap container is one matte dark-black plastic five-gallon
+      bucket with straight cylindrical sides and one silver metal bail handle.
+      Never show a white tub, galvanized pail, pale container, stock tank, or a
+      differently shaped bucket.
+normalization:
+  pre_grade:
+    fps_method: duplicate
+    denoise: 0.35
+    sharpen: 0.12
+    contrast: 1.0
+    brightness: 0.0
+    saturation: 0.96
+  final_grade:
+    warmth: 0.025
+    grain: 1.5
 style:
   global: realistic low-budget rural documentary recorded on an ordinary camera
   broll: >-
@@ -64,6 +122,6 @@ style:
     No text, subtitles, labels that can be read, logos, trademarks, watermarks,
     split screens, collages, surreal elements, malformed hands, or duplicate objects.
 engines:
-  presenter: ltx25_presenter
+  presenter: latentsync16_mouthrestore
   broll: ltx25_t2v
   still: z_image_turbo

@@ -56,6 +56,33 @@
           "narration": {"type": "string", "minLength": 1},
           "prompt": {"type": "string", "minLength": 1},
           "seed": {"type": "integer", "minimum": 0},
+          "pre_grade": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "fps_method": {"enum": ["duplicate", "blend"]},
+              "denoise": {"type": "number", "minimum": 0},
+              "sharpen": {"type": "number", "minimum": -2, "maximum": 2},
+              "contrast": {"type": "number", "minimum": 0},
+              "brightness": {"type": "number", "minimum": -1, "maximum": 1},
+              "saturation": {"type": "number", "minimum": 0},
+              "gamma": {"type": "number", "exclusiveMinimum": 0, "maximum": 10},
+              "blue_shadows": {"type": "number", "minimum": -1, "maximum": 1},
+              "blue_midtones": {"type": "number", "minimum": -1, "maximum": 1},
+              "blue_highlights": {"type": "number", "minimum": -1, "maximum": 1},
+              "source_crop": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["x", "y", "width", "height"],
+                "properties": {
+                  "x": {"type": "integer", "minimum": 0},
+                  "y": {"type": "integer", "minimum": 0},
+                  "width": {"type": "integer", "minimum": 1},
+                  "height": {"type": "integer", "minimum": 1}
+                }
+              }
+            }
+          },
           "asset": {"type": ["string", "null"]},
           "status": {"type": "string"}
         }

@@ -1,0 +1,30 @@
+name: authority_explainer_v2
+description: >-
+  V2 authority-led explainer format with a frame-locked 30 fps delivery,
+  two-pass presenter animation, licensed local stock, pre-grade normalization,
+  and a unified final grade.
+words_per_minute: 163
+average_shot_seconds: 4.0
+visual_mix:
+  presenter: 0.24
+  broll: 0.40
+  still: 0.36
+transitions: hard_cuts
+music: false
+delivery:
+  width: 1920
+  height: 1080
+  fps: 30
+  video_codec: h264
+  pixel_format: yuv420p
+  audio_lufs: -16
+generation:
+  still_dimensions:
+    width: 1344
+    height: 768
+  presenter_dimensions:
+    width: 1024
+    height: 576
+  video_dimensions:
+    width: 1280
+    height: 736

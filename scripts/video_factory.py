@@ -8,6 +8,7 @@ import json
 import math
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -18,13 +19,17 @@ if str(REPO_ROOT) not in sys.path:
 from video_factory.core import (  # noqa: E402
     DEFAULT_BASEDIR,
     DEFAULT_SERVER,
+    bind_project_assets,
     compile_shot_manifest,
     extract_audio_segment,
     ffprobe_duration,
     load_adapter,
+    load_adapter_definition,
     load_project,
     load_state,
+    missing_project_assets,
     render_adapter,
+    request_json,
     save_state,
     sha256_file,
     stable_hash,
@@ -32,6 +37,14 @@ from video_factory.core import (  # noqa: E402
     word_count,
     write_json_atomic,
     write_srt,
+)
+from video_factory.latentsync import (  # noqa: E402
+    ENGINE_NAME as LATENTSYNC_ENGINE,
+    build_cache_key as build_latentsync_cache_key,
+    default_container as default_runtime_container,
+    default_container_user as default_runtime_user,
+    render as render_latentsync,
+    validate_runtime as validate_latentsync_runtime,
 )
 from video_factory.qa import (  # noqa: E402
     MANUAL_CRITERIA,
@@ -67,12 +80,18 @@ def state_asset(state: dict[str, Any], key: str) -> dict[str, Any] | None:
     return None
 
 
-def record_supplied_asset(path: Path, kind: str) -> dict[str, Any]:
+def record_supplied_asset(
+    path: Path, kind: str, metadata: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    details = metadata or {}
     return {
         "status": "supplied",
         "kind": kind,
         "output_path": str(path.resolve()),
-        "cache_key": stable_hash({"kind": kind, "sha256": sha256_file(path)}),
+        "cache_key": stable_hash(
+            {"kind": kind, "sha256": sha256_file(path), "metadata": details}
+        ),
+        **details,
     }
 
 
@@ -147,6 +166,77 @@ def render_with_cache(
     return record
 
 
+def render_latentsync_with_cache(
+    *,
+    state: dict[str, Any],
+    state_path: Path,
+    key: str,
+    source_video: Path,
+    audio: Path,
+    output: Path,
+    seed: int,
+    frame_count: int,
+    fps: int,
+    options: dict[str, Any],
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    cache_key = build_latentsync_cache_key(
+        source_video,
+        audio,
+        seed=seed,
+        frame_count=frame_count,
+        fps=fps,
+        options=options,
+    )
+    existing = state_asset(state, key)
+    if existing and existing.get("cache_key") == cache_key and not args.overwrite:
+        print(f"{key}: cached -> {existing['output_path']}")
+        return existing
+
+    print(f"{key}: rendering with {LATENTSYNC_ENGINE}")
+    request_json(
+        args.server,
+        "POST",
+        "/free",
+        {"unload_models": True, "free_memory": True},
+    )
+    time.sleep(3)
+    state.setdefault("assets", {})[key] = {
+        "status": "queued",
+        "adapter": LATENTSYNC_ENGINE,
+        "cache_key": cache_key,
+    }
+    save_state(state_path, state)
+    try:
+        record = render_latentsync(
+            source_video,
+            audio,
+            output,
+            basedir=args.basedir,
+            seed=seed,
+            frame_count=frame_count,
+            fps=fps,
+            options=options,
+            container=getattr(args, "runtime_container", default_runtime_container()),
+            user=getattr(args, "runtime_user", default_runtime_user()),
+            timeout_seconds=args.timeout_seconds,
+        )
+        record["cache_key"] = cache_key
+    except Exception as exc:
+        state["assets"][key] = {
+            "status": "error",
+            "adapter": LATENTSYNC_ENGINE,
+            "cache_key": cache_key,
+            "error": str(exc),
+        }
+        save_state(state_path, state)
+        raise
+    state["assets"][key] = record
+    save_state(state_path, state)
+    print(f"{key}: wrote {record['output_path']}")
+    return record
+
+
 def _atempo_filter(speed: float) -> str:
     factors = []
     remaining = speed
@@ -158,6 +248,80 @@ def _atempo_filter(speed: float) -> str:
         remaining /= 0.5
     factors.append(remaining)
     return ",".join(f"atempo={factor:.8f}" for factor in factors)
+
+
+def conform_presenter_driving(
+    source: Path,
+    target: Path,
+    *,
+    frame_count: int,
+    fps: int,
+) -> Path:
+    """Extend a short driver with a forward/reverse loop and exact frame count."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    cache_path = target.with_suffix(".cache.json")
+    cache_key = stable_hash(
+        {
+            "algorithm": "forward-reverse-loop-v1",
+            "source_sha256": sha256_file(source),
+            "frame_count": int(frame_count),
+            "fps": int(fps),
+        }
+    )
+    if target.exists() and cache_path.exists():
+        cached = json.loads(cache_path.read_text(encoding="utf-8"))
+        if cached.get("cache_key") == cache_key:
+            return target
+    temporary = target.with_name(target.stem + ".tmp" + target.suffix)
+    video_filter = (
+        f"[0:v]fps={fps},split=2[forward][backward];"
+        "[backward]reverse[reversed];"
+        f"[forward][reversed]concat=n=2:v=1:a=0,trim=end_frame={frame_count},"
+        f"setpts=N/({fps}*TB)[video]"
+    )
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(source),
+            "-filter_complex",
+            video_filter,
+            "-map",
+            "[video]",
+            "-frames:v",
+            str(frame_count),
+            "-an",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-crf",
+            "18",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+            str(temporary),
+        ],
+        check=True,
+    )
+    temporary.replace(target)
+    write_json_atomic(
+        cache_path,
+        {
+            "version": 1,
+            "cache_key": cache_key,
+            "source": str(source.resolve()),
+            "source_sha256": sha256_file(source),
+            "frame_count": int(frame_count),
+            "fps": int(fps),
+        },
+    )
+    return target
 
 
 def conform_narration_speed(
@@ -360,6 +524,207 @@ def compile_and_save(
     return manifest
 
 
+def _adapter_stage_values(
+    adapter_name: str, candidates: dict[str, Any]
+) -> dict[str, Any]:
+    adapter = load_adapter_definition(adapter_name)
+    missing = [
+        slot
+        for slot in adapter.get("required_slots", [])
+        if slot not in candidates
+    ]
+    if missing:
+        raise ValueError(
+            f"Presenter stage {adapter_name} has no values for: {', '.join(missing)}"
+        )
+    return {
+        name: value
+        for name, value in candidates.items()
+        if name in adapter["slots"]
+    }
+
+
+def render_two_pass_presenter(
+    *,
+    shot: dict[str, Any],
+    presenter: Path | None,
+    narration: Path | None,
+    state: dict[str, Any],
+    paths: dict[str, Path],
+    args: argparse.Namespace,
+    presenter_dimensions: dict[str, int],
+    stage_root: Path,
+    prefix: str,
+) -> None:
+    if presenter is None and not args.dry_run:
+        raise RuntimeError("Presenter pipeline requires a master image")
+    if narration is None and not args.dry_run:
+        raise RuntimeError("Presenter pipeline requires narration")
+
+    pipeline = shot["presenter_pipeline"]
+    stage_fps = int(pipeline["fps"])
+    render_duration = max(4.0, float(shot["duration"]))
+    frame_count = max(1, math.ceil(render_duration * stage_fps))
+    driving = Path(pipeline["driving_asset"])
+    driving_capacity = int(pipeline.get("driving_frame_capacity", frame_count))
+    needs_extended_driving = frame_count > driving_capacity
+    audio_target = (
+        args.basedir
+        / "input"
+        / stage_root
+        / "presenter_audio"
+        / f"{shot['shot_id']}.wav"
+    )
+
+    if args.dry_run:
+        image_name = (stage_root / "presenter" / "master.png").as_posix()
+        driving_filename = (
+            f"{shot['shot_id']}-forward-reverse.mp4"
+            if needs_extended_driving
+            else "subtle.mp4"
+        )
+        driving_name = (
+            stage_root / "presenter_driving" / driving_filename
+        ).as_posix()
+        audio_name = (
+            stage_root / "presenter_audio" / f"{shot['shot_id']}.wav"
+        ).as_posix()
+        motion_inputs: list[Path] = []
+    else:
+        if not driving.exists():
+            raise FileNotFoundError(f"Presenter driving video not found: {driving}")
+        image_name = stage_input(
+            presenter,
+            args.basedir,
+            (stage_root / "presenter" / f"master{presenter.suffix}").as_posix(),
+        )
+        if needs_extended_driving:
+            staged_driving = conform_presenter_driving(
+                driving,
+                args.basedir
+                / "input"
+                / stage_root
+                / "presenter_driving"
+                / f"{shot['shot_id']}-forward-reverse.mp4",
+                frame_count=frame_count,
+                fps=stage_fps,
+            )
+            driving_name = staged_driving.relative_to(
+                args.basedir / "input"
+            ).as_posix()
+        else:
+            driving_name = stage_input(
+                driving,
+                args.basedir,
+                (stage_root / "presenter_driving" / driving.name).as_posix(),
+            )
+            staged_driving = args.basedir / "input" / driving_name
+        extract_audio_segment(
+            narration,
+            audio_target,
+            shot["start"],
+            shot["duration"],
+            minimum_duration=render_duration,
+        )
+        audio_name = audio_target.relative_to(args.basedir / "input").as_posix()
+        motion_inputs = [presenter, staged_driving]
+
+    common = {
+        "prompt": shot["prompt"],
+        "seed": shot["seed"],
+        "duration": render_duration,
+        "frame_count": frame_count,
+        "fps": stage_fps,
+        "input_fps": stage_fps,
+        "output_fps": stage_fps,
+        "width": int(presenter_dimensions["width"]),
+        "height": int(presenter_dimensions["height"]),
+    }
+    motion_engine = pipeline["motion_engine"]
+    motion_values = _adapter_stage_values(
+        motion_engine,
+        {
+            **common,
+            "image": image_name,
+            "driving_video": driving_name,
+            "output_prefix": f"{prefix}-motion",
+        },
+    )
+    motion = render_with_cache(
+        state=state,
+        state_path=paths["state"],
+        key=f"shot:{shot['shot_id']}:motion",
+        adapter_name=motion_engine,
+        values=motion_values,
+        basedir=args.basedir,
+        server=args.server,
+        dry_run=args.dry_run,
+        overwrite=args.overwrite,
+        input_paths=motion_inputs,
+        timeout_seconds=args.timeout_seconds,
+    )
+
+    if args.dry_run:
+        motion_name = (
+            stage_root / "presenter_motion" / f"{shot['shot_id']}.mp4"
+        ).as_posix()
+        lip_inputs: list[Path] = []
+    else:
+        motion_path = Path(motion["output_path"])
+        motion_name = stage_input(
+            motion_path,
+            args.basedir,
+            (stage_root / "presenter_motion" / motion_path.name).as_posix(),
+        )
+        lip_inputs = [motion_path, audio_target]
+
+    lip_engine = pipeline["lip_sync_engine"]
+    lip_values = _adapter_stage_values(
+        lip_engine,
+        {
+            **common,
+            "video": motion_name,
+            "audio": audio_name,
+            "output_prefix": prefix,
+        },
+    )
+    if lip_engine == LATENTSYNC_ENGINE:
+        if args.dry_run:
+            print(f"shot:{shot['shot_id']}: would render with {LATENTSYNC_ENGINE}")
+            return
+        render_latentsync_with_cache(
+            state=state,
+            state_path=paths["state"],
+            key=f"shot:{shot['shot_id']}",
+            source_video=motion_path,
+            audio=audio_target,
+            output=(
+                paths["root"]
+                / "shots"
+                / f"{shot['shot_id']}-latentsync16-mouthrestore.mp4"
+            ),
+            seed=int(shot["seed"]),
+            frame_count=frame_count,
+            fps=stage_fps,
+            options=pipeline.get("lip_sync_options", {}),
+            args=args,
+        )
+        return
+    render_with_cache(
+        state=state,
+        state_path=paths["state"],
+        key=f"shot:{shot['shot_id']}",
+        adapter_name=lip_engine,
+        values=lip_values,
+        basedir=args.basedir,
+        server=args.server,
+        dry_run=args.dry_run,
+        overwrite=args.overwrite,
+        input_paths=lip_inputs,
+        timeout_seconds=args.timeout_seconds,
+    )
+
+
 def render_shots(
     context: dict[str, Any],
     manifest: dict[str, Any],
@@ -383,6 +748,21 @@ def render_shots(
             raise RuntimeError("Presenter shots require rendered or supplied narration")
         if presenter is None and not args.dry_run:
             raise RuntimeError("Presenter shots require a rendered or supplied master image")
+    needs_latentsync = any(
+        shot.get("presenter_pipeline", {}).get("lip_sync_engine")
+        == LATENTSYNC_ENGINE
+        for shot in selected
+    )
+    if needs_latentsync and not args.dry_run:
+        runtime = validate_latentsync_runtime(
+            getattr(args, "runtime_container", default_runtime_container()),
+            getattr(args, "runtime_user", default_runtime_user()),
+            min(args.timeout_seconds, 300),
+        )
+        print(
+            "latentsync16: runtime verified -> "
+            f"torch {runtime['torch']}, CUDA {runtime['cuda']}"
+        )
 
     profile = context["profile"]
     still_dimensions = profile.get("generation", {}).get(
@@ -400,6 +780,41 @@ def render_shots(
         key = f"shot:{shot['shot_id']}"
         prefix = f"video_factory/{context['slug']}/shots/{shot['shot_id']}"
         input_paths: list[Path] = []
+        if source_asset := shot.get("source_asset"):
+            source_path = Path(source_asset)
+            if args.dry_run:
+                print(f"{key}: would use local asset -> {source_path}")
+                continue
+            if not source_path.exists():
+                raise FileNotFoundError(f"Local shot asset not found: {source_path}")
+            record = record_supplied_asset(
+                source_path,
+                "shot",
+                {
+                    "asset_ref": shot.get("asset_ref"),
+                    "source_start": float(shot.get("source_start", 0)),
+                    "source_license": shot.get("source_license", "unspecified"),
+                    "source_url": shot.get("source_url"),
+                    "source_expected_sha256": shot.get("source_expected_sha256"),
+                },
+            )
+            state.setdefault("assets", {})[key] = record
+            save_state(paths["state"], state)
+            print(f"{key}: local asset -> {record['output_path']}")
+            continue
+        if shot["type"] == "presenter" and shot.get("presenter_pipeline"):
+            render_two_pass_presenter(
+                shot=shot,
+                presenter=presenter,
+                narration=narration,
+                state=state,
+                paths=paths,
+                args=args,
+                presenter_dimensions=presenter_dimensions,
+                stage_root=stage_root,
+                prefix=prefix,
+            )
+            continue
         if shot["type"] == "still":
             values = {
                 "prompt": shot["prompt"],
@@ -460,6 +875,7 @@ def render_shots(
             if "height" in adapter["slots"]:
                 values["height"] = int(presenter_dimensions["height"])
 
+        values = _adapter_stage_values(shot["engine"], values)
         render_with_cache(
             state=state,
             state_path=paths["state"],
@@ -568,6 +984,71 @@ def _video_encoding_args(video_codec: str, pixel_format: str) -> list[str]:
     return args
 
 
+def _pre_grade_filters(
+    settings: dict[str, Any], width: int, height: int, fps: int
+) -> list[str]:
+    filters = []
+    if source_crop := settings.get("source_crop"):
+        filters.append(
+            f"crop={int(source_crop['width'])}:{int(source_crop['height'])}:"
+            f"{int(source_crop['x'])}:{int(source_crop['y'])}"
+        )
+    filters.extend(
+        [
+            f"scale={width}:{height}:force_original_aspect_ratio=increase",
+            f"crop={width}:{height}",
+        ]
+    )
+    fps_method = settings.get("fps_method", "duplicate")
+    if fps_method == "blend":
+        filters.append(f"minterpolate=fps={fps}:mi_mode=blend")
+    elif fps_method == "duplicate":
+        filters.append(f"fps={fps}")
+    else:
+        raise ValueError(f"Unsupported normalization fps_method: {fps_method}")
+
+    denoise = float(settings.get("denoise", 0))
+    if denoise > 0:
+        filters.append(f"hqdn3d={denoise:g}:{denoise:g}:{denoise * 1.5:g}:{denoise * 1.5:g}")
+    sharpen = float(settings.get("sharpen", 0))
+    if sharpen:
+        filters.append(f"unsharp=5:5:{sharpen:g}:5:5:0")
+    contrast = float(settings.get("contrast", 1))
+    brightness = float(settings.get("brightness", 0))
+    saturation = float(settings.get("saturation", 1))
+    gamma = float(settings.get("gamma", 1))
+    if (contrast, brightness, saturation, gamma) != (1.0, 0.0, 1.0, 1.0):
+        filters.append(
+            f"eq=contrast={contrast:g}:brightness={brightness:g}:"
+            f"saturation={saturation:g}:gamma={gamma:g}"
+        )
+    blue_shadows = float(settings.get("blue_shadows", 0))
+    blue_midtones = float(settings.get("blue_midtones", 0))
+    blue_highlights = float(settings.get("blue_highlights", 0))
+    if (blue_shadows, blue_midtones, blue_highlights) != (0.0, 0.0, 0.0):
+        filters.append(
+            f"colorbalance=bs={blue_shadows:g}:bm={blue_midtones:g}:"
+            f"bh={blue_highlights:g}"
+        )
+    return filters
+
+
+def _final_grade_filters(settings: dict[str, Any], pixel_format: str) -> list[str]:
+    filters = []
+    if lut_path := settings.get("lut_path"):
+        escaped = str(lut_path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+        filters.append(f"lut3d=file='{escaped}'")
+    warmth = float(settings.get("warmth", 0))
+    if warmth:
+        filters.append(f"colorbalance=rs={warmth:g}:bs={-warmth:g}")
+    grain = float(settings.get("grain", 0))
+    if grain > 0:
+        filters.append(f"noise=alls={grain:g}:allf=t+u")
+    if filters:
+        filters.append(f"format={pixel_format}")
+    return filters
+
+
 def create_assembly_clip(
     asset: Path,
     target: Path,
@@ -577,21 +1058,29 @@ def create_assembly_clip(
     fps: int,
     video_codec: str = "libx264",
     pixel_format: str = "yuv420p",
+    pre_grade: dict[str, Any] | None = None,
+    source_start: float = 0,
 ) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
-    common_filter = (
-        f"scale={width}:{height}:force_original_aspect_ratio=increase,"
-        f"crop={width}:{height},fps={fps},"
-        f"tpad=stop_mode=clone:stop_duration={duration:.3f},format={pixel_format}"
-    )
-    if asset.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".bmp"}:
-        frames = max(1, math.ceil(duration * fps))
-        video_filter = (
-            f"scale={width * 2}:{height * 2}:force_original_aspect_ratio=increase,"
-            f"crop={width * 2}:{height * 2},"
-            f"zoompan=z='min(zoom+0.00035,1.05)':"
-            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-            f"d={frames}:s={width}x{height}:fps={fps},format={pixel_format}"
+    settings = pre_grade or {}
+    is_still = asset.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+    if is_still:
+        frames = max(1, round(duration * fps))
+        pre_grade_filters = _pre_grade_filters(settings, width, height, fps)
+        geometry_count = 4 if settings.get("source_crop") else 3
+        grade_filters = pre_grade_filters[geometry_count:]
+        source_crop_filters = pre_grade_filters[:1] if settings.get("source_crop") else []
+        video_filter = ",".join(
+            [
+                *source_crop_filters,
+                f"scale={width * 2}:{height * 2}:force_original_aspect_ratio=increase",
+                f"crop={width * 2}:{height * 2}",
+                "zoompan=z='min(zoom+0.00035,1.05)':"
+                "x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+                f"d={frames}:s={width}x{height}:fps={fps}",
+                *grade_filters,
+                f"format={pixel_format}",
+            ]
         )
         command = [
             "ffmpeg",
@@ -603,26 +1092,39 @@ def create_assembly_clip(
             "1",
             "-i",
             str(asset),
-            "-t",
-            f"{duration:.3f}",
+            "-frames:v",
+            str(frames),
             "-vf",
             video_filter,
         ]
     else:
+        video_filter = ",".join(
+            [
+                *_pre_grade_filters(settings, width, height, fps),
+                f"tpad=stop_mode=clone:stop_duration={duration:.3f}",
+                f"format={pixel_format}",
+            ]
+        )
         command = [
             "ffmpeg",
             "-y",
             "-hide_banner",
             "-loglevel",
             "error",
-            "-i",
-            str(asset),
-            "-t",
-            f"{duration:.3f}",
-            "-an",
-            "-vf",
-            common_filter,
         ]
+        if source_start > 0:
+            command.extend(["-ss", f"{source_start:.3f}"])
+        command.extend(
+            [
+                "-i",
+                str(asset),
+                "-t",
+                f"{duration:.3f}",
+                "-an",
+                "-vf",
+                video_filter,
+            ]
+        )
     command.extend(_video_encoding_args(video_codec, pixel_format))
     command.extend(["-movflags", "+faststart", str(target)])
     subprocess.run(command, check=True)
@@ -654,22 +1156,32 @@ def assemble_project(
     height = int(delivery["height"])
     fps = int(delivery["fps"])
     video_codec, pixel_format, audio_lufs = _delivery_settings(delivery)
+    normalization = manifest.get("normalization", {})
+    global_pre_grade = normalization.get("pre_grade", {})
+    final_grade = normalization.get("final_grade", {})
     paths["clips"].mkdir(parents=True, exist_ok=True)
     clips = []
     for shot in manifest["shots"]:
         clip = paths["clips"] / f"{shot['index']:04d}-{shot['shot_id']}.mp4"
         asset = Path(shot["asset"])
         cache_record_path = clip.with_suffix(".cache.json")
+        shot_pre_grade = {**global_pre_grade, **shot.get("pre_grade", {})}
+        duration = (
+            int(shot["frame_count"]) / fps
+            if "frame_count" in shot
+            else float(shot["duration"])
+        )
         cache_key = stable_hash(
             {
                 "source_sha256": sha256_file(asset),
-                "duration": float(shot["duration"]),
+                "source_start": float(shot.get("source_start", 0)),
+                "duration": duration,
                 "width": width,
                 "height": height,
                 "fps": fps,
                 "video_codec": video_codec,
                 "pixel_format": pixel_format,
-                "audio_lufs": audio_lufs,
+                "pre_grade": shot_pre_grade,
             }
         )
         cache_record = None
@@ -690,12 +1202,14 @@ def assemble_project(
                 create_assembly_clip(
                     asset,
                     temporary_clip,
-                    float(shot["duration"]),
+                    duration,
                     width,
                     height,
                     fps,
                     video_codec,
                     pixel_format,
+                    shot_pre_grade,
+                    float(shot.get("source_start", 0)),
                 )
                 temporary_clip.replace(clip)
             finally:
@@ -731,36 +1245,42 @@ def assemble_project(
         ],
         check=True,
     )
-    subprocess.run(
+    final_command = [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        str(silent_video),
+        "-i",
+        str(narration),
+        "-map",
+        "0:v:0",
+        "-map",
+        "1:a:0",
+    ]
+    if grade_filters := _final_grade_filters(final_grade, pixel_format):
+        final_command.extend(["-vf", ",".join(grade_filters)])
+    final_command.extend(_video_encoding_args(video_codec, pixel_format))
+    final_command.extend(
         [
-            "ffmpeg",
-            "-y",
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-i",
-            str(silent_video),
-            "-i",
-            str(narration),
-            "-map",
-            "0:v:0",
-            "-map",
-            "1:a:0",
-            *_video_encoding_args(video_codec, pixel_format),
             "-af",
-            f"loudnorm=I={audio_lufs:g}:TP=-1.5:LRA=11",
+            f"loudnorm=I={audio_lufs:g}:TP=-1.5:LRA=11,apad",
             "-c:a",
             "aac",
             "-b:a",
             "192k",
+            "-frames:v",
+            str(round(float(manifest["duration"]) * fps)),
             "-t",
             f"{manifest['duration']:.3f}",
             "-movflags",
             "+faststart",
             str(paths["delivery"]),
-        ],
-        check=True,
+        ]
     )
+    subprocess.run(final_command, check=True)
     write_json_atomic(paths["manifest"], manifest)
     print(f"Delivery: {paths['delivery']}")
     return paths["delivery"]
@@ -768,6 +1288,12 @@ def assemble_project(
 
 def command_validate(args: argparse.Namespace) -> int:
     context = load_project(args.project)
+    bind_project_assets(context, args.basedir)
+    missing_assets = missing_project_assets(context)
+    if missing_assets:
+        raise FileNotFoundError(
+            "Required project assets are missing:\n- " + "\n- ".join(missing_assets)
+        )
     print(f"Project: {context['slug']}")
     print(f"Profile: {context['profile']['name']}")
     print(f"Script: {context['script_file']}")
@@ -777,6 +1303,7 @@ def command_validate(args: argparse.Namespace) -> int:
 
 def command_compile(args: argparse.Namespace) -> int:
     context = load_project(args.project)
+    bind_project_assets(context, args.basedir)
     paths = runtime_paths(context, args.basedir)
     state = load_state(paths["state"])
     audio = Path(args.audio).resolve() if args.audio else narration_path(context, state)
@@ -791,6 +1318,7 @@ def command_compile(args: argparse.Namespace) -> int:
 
 def command_render(args: argparse.Namespace) -> int:
     context = load_project(args.project)
+    bind_project_assets(context, args.basedir)
     paths = runtime_paths(context, args.basedir)
     state = load_state(paths["state"])
     paths["root"].mkdir(parents=True, exist_ok=True)
@@ -819,6 +1347,7 @@ def command_render(args: argparse.Namespace) -> int:
 
 def command_assemble(args: argparse.Namespace) -> int:
     context = load_project(args.project)
+    bind_project_assets(context, args.basedir)
     paths = runtime_paths(context, args.basedir)
     if not paths["manifest"].exists():
         raise FileNotFoundError(f"Compile the project first: {paths['manifest']}")
@@ -830,6 +1359,7 @@ def command_assemble(args: argparse.Namespace) -> int:
 
 def command_qa_presenter(args: argparse.Namespace) -> int:
     context = load_project(args.project)
+    bind_project_assets(context, args.basedir)
     paths = runtime_paths(context, args.basedir)
     if not paths["manifest"].exists():
         raise FileNotFoundError(f"Compile the project first: {paths['manifest']}")
@@ -843,8 +1373,11 @@ def command_qa_presenter(args: argparse.Namespace) -> int:
 
     supplied_manual = {
         "visible_articulation": args.visible_articulation,
+        "lip_sync": args.lip_sync,
         "identity_stability": args.identity_stability,
         "temporal_stability": args.temporal_stability,
+        "beard_teeth_stability": args.beard_teeth_stability,
+        "blend_seam_free": args.blend_seam_free,
         "text_artifact_free": args.text_artifact_free,
     }
     if any(supplied_manual.values()) and len(selected) != 1:
@@ -912,6 +1445,7 @@ def command_qa_presenter(args: argparse.Namespace) -> int:
 
 def command_status(args: argparse.Namespace) -> int:
     context = load_project(args.project)
+    bind_project_assets(context, args.basedir)
     paths = runtime_paths(context, args.basedir)
     state = load_state(paths["state"])
     manifest = (
@@ -967,6 +1501,16 @@ def build_parser() -> argparse.ArgumentParser:
     render.add_argument("--overwrite", action="store_true")
     render.add_argument("--dry-run", action="store_true")
     render.add_argument("--timeout-seconds", type=float, default=1800)
+    render.add_argument(
+        "--runtime-container",
+        default=default_runtime_container(),
+        help="Container for external pinned presenter stages",
+    )
+    render.add_argument(
+        "--runtime-user",
+        default=default_runtime_user(),
+        help="UID:GID used for external container writes",
+    )
     render.set_defaults(func=command_render)
 
     assemble = subparsers.add_parser("assemble", help="Assemble rendered assets with FFmpeg")
@@ -980,8 +1524,11 @@ def build_parser() -> argparse.ArgumentParser:
     qa_presenter.add_argument("project")
     qa_presenter.add_argument("--shot-id")
     qa_presenter.add_argument("--visible-articulation", choices=["pass", "fail"])
+    qa_presenter.add_argument("--lip-sync", choices=["pass", "fail"])
     qa_presenter.add_argument("--identity-stability", choices=["pass", "fail"])
     qa_presenter.add_argument("--temporal-stability", choices=["pass", "fail"])
+    qa_presenter.add_argument("--beard-teeth-stability", choices=["pass", "fail"])
+    qa_presenter.add_argument("--blend-seam-free", choices=["pass", "fail"])
     qa_presenter.add_argument("--text-artifact-free", choices=["pass", "fail"])
     qa_presenter.add_argument("--notes")
     qa_presenter.add_argument("--require-pass", action="store_true")

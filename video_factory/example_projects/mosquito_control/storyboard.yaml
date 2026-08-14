@@ -1,58 +1,110 @@
 shots:
   - type: broll
+    continuity: [bucket]
     narration: A dark five-gallon bucket can become the most useful mosquito trap on your property.
-    visual: Handheld close-up moving toward a plain dark bucket half full of rainwater behind a weathered wooden garden shed.
+    visual: Handheld close-up moving toward the canonical bucket half full of rainwater behind a weathered wooden garden shed.
   - type: still
+    asset_ref: stock_mosquito_adult
+    pre_grade:
+      saturation: 0.25
+      contrast: 0.9
+      brightness: -0.03
+      gamma: 0.85
+      blue_shadows: 0.25
+      blue_midtones: 0.2
+      blue_highlights: 0.08
     narration: It works by offering female mosquitoes an attractive place to lay their eggs.
-    visual: Macro documentary view of a mosquito hovering just above still dark water inside a garden bucket, scientifically plausible anatomy.
+    visual: Real public-domain macro footage of a living adult female Aedes mosquito, with genuine insect motion and anatomy.
   - type: presenter
+    continuity: [presenter]
     narration: The important part is ensuring those eggs never become biting adults.
   - type: broll
+    continuity: [presenter, bucket]
     narration: Place a dark bucket in shade, away from patios, doors, and play areas.
-    visual: A person carries a plain black bucket across a rural garden and sets it in deep shade behind a hedge, face outside frame.
+    visual: The canonical host carries the canonical bucket across a rural garden and sets it in deep shade behind a hedge; frame only his white-shirted torso, suspenders, arms, and the bucket, with his face always outside frame.
   - type: still
+    continuity: [bucket]
     narration: Fill it halfway with water and add grass clippings or dry leaves.
-    visual: Top-down documentary photograph of a hand dropping loose grass clippings and dry leaves into a half-filled black bucket.
+    visual: Top-down documentary photograph of a hand dropping loose grass clippings and dry leaves into the canonical half-filled bucket.
   - type: broll
+    asset_ref: approved_s0006_murky_water
+    continuity: [bucket]
+    seed: 509906
     narration: Decomposing plants make the water resemble the sheltered pools mosquitoes naturally seek.
-    visual: Slow handheld close-up across murky still bucket water with floating leaves and grass, natural reflections and no visible insects larger than life.
+    visual: Tight top-down documentary photograph cropped entirely inside one matte-black bucket. A continuous black circular rim surrounds murky still water containing several brown leaves and loose green grass clippings. No object breaks the water surface except leaves and grass. No bowl, cup, second container, white plastic, insert, or insect.
   - type: presenter
+    continuity: [presenter]
+    lip_sync_options:
+      pad_x: 9.0
+      minimum_radius_x: 35.0
+      feather_sigma: 5.5
     narration: Because that water attracts breeding, it must never be left untreated.
   - type: still
+    continuity: [bucket]
+    seed: 509608
     narration: Add a labelled BTI mosquito product, following its exact dose and replacement schedule.
-    visual: Close documentary photograph of a generic unbranded spoon holding tan mosquito-control granules above a dark bucket, packaging deliberately out of frame.
+    visual: Tight close documentary photograph containing exactly one matte-black bucket and one generic unbranded spoon of tan mosquito-control granules above its dark water. The bucket fills the background edge to edge. Show no second vessel, no nested or white bucket, no pale rim, and no packaging.
   - type: broll
+    asset_ref: stock_mosquito_larvae
+    pre_grade:
+      saturation: 0.25
+      contrast: 0.9
+      brightness: -0.03
+      gamma: 0.85
+      blue_shadows: 0.25
+      blue_midtones: 0.2
+      blue_highlights: 0.08
     narration: BTI targets mosquito larvae in water instead of spraying every garden insect.
-    visual: Scientifically plausible macro underwater footage of mosquito larvae moving near the surface of still bucket water.
+    visual: Real public-domain macro footage of living Aedes mosquito larvae moving through water, with genuine anatomy and motion.
   - type: still
+    asset_ref: stock_bees_hibiscus
     narration: That distinction matters around flowers, bees, pets, and family spaces.
-    visual: Honeybee visiting purple summer flowers in a modest garden, with a relaxed dog softly out of focus in the background.
+    visual: Real CC0 footage of bees pollinating hibiscus flowers, with genuine insect motion and anatomy.
   - type: presenter
+    continuity: [presenter]
     seed: 509111
     narration: One bucket is rarely enough for an entire property.
   - type: broll
+    continuity: [bucket]
     narration: Place several stations near hedges, sheds, rain barrels, and damp shaded corners.
-    visual: Handheld walking shot through a rural property revealing separate dark buckets discreetly placed by a hedge, shed, and rain barrel.
+    visual: Handheld walking shot through one coherent rural property revealing identical canonical buckets discreetly placed by a hedge, shed, and rain barrel.
   - type: still
+    asset_ref: approved_s0013_covered_bucket
+    continuity: [bucket]
+    seed: 510313
     narration: Protect every station from children and animals while following the product instructions.
-    visual: A securely positioned covered mosquito station in a fenced garden utility corner, inaccessible to a nearby child and dog in the distant background.
+    visual: Tight documentary photograph of one solitary matte-black five-gallon bucket filling the frame. A fitted flat matte-black lid sits flush on the black rim; bucket, rim, and lid are uniformly black. The closed black bucket stands directly behind a simple wire fence in a green garden corner. No other object or container is visible anywhere. No white, cream, pale, stacked, nested, open, or second vessel.
   - type: broll
+    seed: 509714
     narration: Then inspect the property weekly and empty every accidental container holding rainwater.
-    visual: First-person handheld footage tipping collected rainwater from a plant saucer onto gravel during a weekly garden inspection.
+    visual: Normal-lens close-up of two natural hands tilting one emptying terracotta saucer over plain gravel, with a clear stream of rainwater pouring from its rim. The saucer and gravel fill the frame. No plant, pot, arm without a body, person, face, fisheye distortion, wide landscape, or second object.
   - type: still
     narration: Saucers, tarps, gutters, toys, wheelbarrows, and tyres can all become breeding sites.
     visual: Wide documentary photograph of a slightly untidy garden utility area containing a wheelbarrow, folded tarp, plant saucer, old toy, gutter downpipe, and one tyre after rain.
   - type: presenter
+    continuity: [presenter]
     seed: 509116
     narration: A treated trap works best when competing water sources are removed.
   - type: broll
+    continuity: [presenter, bucket]
+    seed: 509717
+    pre_grade:
+      source_crop:
+        x: 100
+        y: 170
+        width: 700
+        height: 394
     narration: After heavy rain, empty unwanted water and refresh treated stations when their labels require it.
-    visual: Overcast handheld garden footage after a storm as a person empties a small container, checks a dark bucket, and marks a maintenance date on a private notebook with no readable writing.
+    visual: Extreme neck-down close-up after rain. The top edge of frame cuts across the host's upper chest below his collar, excluding his entire head, neck, hair, beard, hat, and face. Only a plain white linen shirt, two black suspenders, and two hands are visible checking the unobstructed rim of one matte-black bucket. No notebook, denim, blue fabric, white container, pale rim, or second vessel.
   - type: still
+    asset_ref: stock_bees_meadow
     narration: Avoid spraying open flowers while pollinators are active.
-    visual: Close documentary photograph of flowering herbs covered with active bees while a pump garden sprayer remains safely stored in the distant background.
+    visual: Real public-domain footage of honey bees actively pollinating yellow prairie coneflowers in a meadow, with no sprayer visible.
   - type: presenter
+    continuity: [presenter]
     narration: This is a routine aimed at the mosquito life cycle, not a one-time miracle.
   - type: broll
+    continuity: [presenter, bucket]
+    seed: 509620
     narration: Check local guidance, review results weekly, and adjust placement before adding more chemicals.
-    visual: Handheld final shot at sunset as a homeowner quietly moves one dark bucket farther behind a hedge and surveys the calm garden.
+    visual: Normal-lens handheld final shot at sunset, framed strictly from shoulders to waist. Show only the canonical host's plain white linen shirt, black suspenders, and arms carrying exactly one empty matte-black bucket with an unobstructed black rim as he moves it behind a hedge. Nothing is inside the bucket. No white insert, pale rim, nested vessel, denim, face, or readable text.

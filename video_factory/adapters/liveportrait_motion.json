@@ -1,0 +1,26 @@
+{
+  "name": "liveportrait_motion",
+  "description": "LivePortrait image-to-video motion pass with lower-face motion restrained.",
+  "template": "api_templates/liveportrait_motion.json",
+  "output_node": "9",
+  "required_slots": [
+    "image",
+    "driving_video",
+    "frame_count",
+    "input_fps",
+    "output_fps",
+    "width",
+    "height",
+    "output_prefix"
+  ],
+  "slots": {
+    "image": {"node": "1", "input": "image"},
+    "driving_video": {"node": "3", "input": "video"},
+    "frame_count": {"node": "3", "input": "frame_load_cap"},
+    "input_fps": {"node": "3", "input": "force_rate"},
+    "output_fps": {"node": "9", "input": "frame_rate"},
+    "width": {"node": "2", "input": "width"},
+    "height": {"node": "2", "input": "height"},
+    "output_prefix": {"node": "9", "input": "filename_prefix"}
+  }
+}

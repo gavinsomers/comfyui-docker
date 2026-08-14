@@ -1,0 +1,15 @@
+{
+  "name": "latentsync16_mouthrestore",
+  "kind": "external",
+  "runner": "docker_latentsync16_mouthrestore",
+  "description": "Pinned LatentSync 1.6 mask3 inference followed by the approved tracked source-preserving mouth composite.",
+  "required_slots": ["video", "audio", "seed", "frame_count", "fps", "output_prefix"],
+  "slots": {
+    "video": {},
+    "audio": {},
+    "seed": {},
+    "frame_count": {},
+    "fps": {},
+    "output_prefix": {}
+  }
+}
